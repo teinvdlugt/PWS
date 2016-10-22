@@ -76,6 +76,7 @@ eos_index = 2
 special_vocab = ['#', ' ', '~']
 vocab = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
          'u', 'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
+total_vocab = [special_vocab + vocab]
 
 
 def read_data(dataset_path, max_size=None):
@@ -152,7 +153,8 @@ def create_model(session, forward_only):
 
 
 def train():
-    # Prepare WMT data.
+    """Train the model!"""
+    # Prepare dialogue data.
     print("Preparing data in %s" % data_dir)
     # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
     #     FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
@@ -216,7 +218,7 @@ def train():
 
                 step_time, loss = 0.0, 0.0
 
-                # Run evals on development set and print their perplexity.
+                # Run evaluations on development set and print their perplexity.
                 for bucket_id in xrange(len(buckets)):
                     if len(dev_set[bucket_id]) == 0:
                         print("  eval: empty bucket %d" % bucket_id)
@@ -232,42 +234,41 @@ def train():
 
 
 def decode():
+    """Propagate forward and create a response to an input sentence"""
     with tf.Session() as sess:
         # Create model and load parameters.
-        model = create_model(sess, True)
+        model = create_model(sess,
+                             True)  # forward_only is True, because we don't need to backpropagate
         model.batch_size = 1  # We decode one sentence at a time.
-
-        # Load vocabularies.
-        en_vocab_path = os.path.join(FLAGS.data_dir,
-                                     "vocab%d.en" % FLAGS.en_vocab_size)
-        fr_vocab_path = os.path.join(FLAGS.data_dir,
-                                     "vocab%d.fr" % FLAGS.fr_vocab_size)
-        en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
-        _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
         # Decode from standard input.
         sys.stdout.write("> ")
         sys.stdout.flush()
         sentence = sys.stdin.readline()
+
         while sentence:
             # Get token-ids for the input sentence.
-            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
+            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)  # TODO Create function
             # Which bucket does it belong to?
-            bucket_id = min([b for b in xrange(len(_buckets))
-                             if _buckets[b][0] > len(token_ids)])
+            bucket_id = min([b for b in xrange(len(buckets))
+                             if buckets[b][0] > len(token_ids)])
             # Get a 1-element batch to feed the sentence to the model.
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                {bucket_id: [(token_ids, [])]}, bucket_id)
+                # Creating dictionary, not list, because there's only one bucket_id, maybe != 0
+                {bucket_id: [(token_ids, [])]},
+                bucket_id)
             # Get output logits for the sentence.
             _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                              target_weights, bucket_id, True)
             # This is a greedy decoder - outputs are just argmaxes of output_logits.
             outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
             # If there is an EOS symbol in outputs, cut them at that point.
-            if data_utils.EOS_ID in outputs:
+            if data_utils.EOS_ID in outputs:  # TODO rewrite according to data_utils
                 outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-            # Print out French sentence corresponding to outputs.
-            print(" ".join([tf.compat.as_str(rev_fr_vocab[output]) for output in outputs]))
+            # Print out the response sentence corresponding to outputs.
+            print(total_vocab[output] for output in outputs)
+
+            # Read next input line
             print("> ", end="")
             sys.stdout.flush()
             sentence = sys.stdin.readline()
@@ -276,10 +277,10 @@ def decode():
 def self_test():
     """Test the translation model."""
     with tf.Session() as sess:
-        print("Self-test for neural translation model.")
+        print("Self-test for neural conversational model.")
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
-        model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
-                                           5.0, 32, 0.3, 0.99, num_samples=8)
+        model = seq2seq_model.Seq2SeqModel([(3, 3), (6, 6)], 32, 2,
+                                           5.0, 32, 0.3, 0.99, dtype=tf.float16)
         sess.run(tf.initialize_all_variables())
 
         # Fake data set for both the (3, 3) and (6, 6) bucket.
@@ -294,13 +295,15 @@ def self_test():
 
 
 def main(_):
-    if FLAGS.self_test:
-        self_test()
-    elif FLAGS.decode:
-        decode()
-    else:
-        train()
+    # if FLAGS.self_test:
+    #     self_test()
+    # elif FLAGS.decode:
+    #     decode()
+    # else:
+    #     train()
+    pass
 
 
 if __name__ == "__main__":
-    tf.app.run()
+    # tf.app.run()
+    pass

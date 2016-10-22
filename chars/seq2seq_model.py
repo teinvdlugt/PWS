@@ -44,8 +44,6 @@ class Seq2SeqModel(object):
     """
 
     def __init__(self,
-                 source_vocab_size,
-                 target_vocab_size,
                  buckets,
                  size,
                  num_layers,
@@ -54,14 +52,11 @@ class Seq2SeqModel(object):
                  learning_rate,
                  learning_rate_decay_factor,
                  use_lstm=False,
-                 num_samples=512,
                  forward_only=False,
                  dtype=tf.float32):
         """Create the model.
 
         Args:
-          source_vocab_size: size of the source vocabulary.
-          target_vocab_size: size of the target vocabulary.
           buckets: a list of pairs (I, O), where I specifies maximum input length
             that will be processed in that bucket, and O specifies maximum output
             length. Training instances that have inputs longer than I or outputs
@@ -76,12 +71,9 @@ class Seq2SeqModel(object):
           learning_rate: learning rate to start with.
           learning_rate_decay_factor: decay learning rate by this much when needed.
           use_lstm: if true, we use LSTM cells instead of GRU cells.
-          num_samples: number of samples for sampled softmax.
           forward_only: if set, we do not construct the backward pass in the model.
           dtype: the data type to use to store internal variables.
         """
-        self.source_vocab_size = source_vocab_size
-        self.target_vocab_size = target_vocab_size
         self.buckets = buckets
         self.batch_size = batch_size
         self.learning_rate = tf.Variable(

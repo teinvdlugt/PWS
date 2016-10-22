@@ -39,23 +39,27 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from six.moves import xrange  # pylint: disable=redefined-builtin
+
+# from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.models.rnn.translate import data_utils
 from tensorflow.models.rnn.translate import seq2seq_model
 
-tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
-tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
-                          "Learning rate decays by this much.")
-tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
-                          "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size", 64,
-                            "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 40000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("fr_vocab_size", 40000, "French vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
+# Hyperparameters
+dtype = tf.float16  # or tf.float32
+# We use a number of buckets and pad to the closest one for efficiency.
+# See seq2seq_model.Seq2SeqModel for details of how they work.
+buckets = [(10, 40), (20, 40), (30, 100), (50, 100)]
+size = 1024  # Size of each model layer
+num_layers = 3  # Number of layers in the model
+learning_rate = .5
+learning_rate_decay_factor = .99
+max_gradient_norm = 5.0  # Clip gradients to this norm
+batch_size = 32  # Batch size used during training
+forward_only = True
+
+train_dir = "/tmp"  # TODO change to a permanent directory in the git repo?
+data_dir = "/tmp"
+
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
@@ -69,19 +73,17 @@ tf.app.flags.DEFINE_boolean("use_fp16", False,
 
 FLAGS = tf.app.flags.FLAGS
 
-# We use a number of buckets and pad to the closest one for efficiency.
-# See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(10, 40), (20, 40), (30, 100), (50, 100)]
+eos_index = 0
+alphabet = ['~', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+            'u', 'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
 
 
 def read_data(dataset_path, max_size=None):
     """Read data from source and target files and put into buckets.
 
     Args:
-      source_path: path to the files with token-ids for the source language.
-      target_path: path to the file with token-ids for the target language;
-        it must be aligned with the source file: n-th line contains the desired
-        output for n-th line from the source_path.
+      dataset_path: path to a file containing a dialog, consecutive lines being
+        said by different people in response to each other
       max_size: maximum number of lines to read, all other will be ignored;
         if 0 or None, data files will be read completely (no limit).
 
@@ -103,11 +105,17 @@ def read_data(dataset_path, max_size=None):
 
             input_chars = []
             for i in input_sentence:
-                input_chars.append(alphabet.index(i))
+                try:
+                    input_chars.append(alphabet.index(i))
+                except ValueError:
+                    continue
             output_chars = []
             for i in output_sentence:
-                output_chars.append(alphabet.index(i))
-            output_chars.append(eos_symbol)
+                try:
+                    output_chars.append(alphabet.index(i))
+                except ValueError:
+                    continue
+            output_chars.append(eos_index)
 
             for bucket_id in xrange(len(_buckets)):
                 bucket_max_input_size = _buckets[bucket_id][0]
@@ -121,32 +129,25 @@ def read_data(dataset_path, max_size=None):
     return data_set
 
 
-eos_symbol = '~'
-alphabet = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
-            'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
-
-
 def create_model(session, forward_only):
     """Create translation model and initialize or load parameters in session."""
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
     model = seq2seq_model.Seq2SeqModel(
-        FLAGS.en_vocab_size,
-        FLAGS.fr_vocab_size,
-        _buckets,
-        FLAGS.size,
-        FLAGS.num_layers,
-        FLAGS.max_gradient_norm,
-        FLAGS.batch_size,
-        FLAGS.learning_rate,
-        FLAGS.learning_rate_decay_factor,
+        buckets,
+        size,
+        num_layers,
+        max_gradient_norm,
+        batch_size,
+        learning_rate,
+        learning_rate_decay_factor,
         forward_only=forward_only,
         dtype=dtype)
-    ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+    ckpt = tf.train.get_checkpoint_state(train_dir)
     if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
-        print("Created model with fresh parameters.")
+        print("Creating model with fresh parameters.")
         session.run(tf.initialize_all_variables())
     return model
 

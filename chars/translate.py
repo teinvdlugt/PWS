@@ -41,8 +41,8 @@ import numpy as np
 import tensorflow as tf
 
 # from six.moves import xrange  # pylint: disable=redefined-builtin
-from tensorflow.models.rnn.translate import data_utils
-from tensorflow.models.rnn.translate import seq2seq_model
+from chars import seq2seq_model
+from chars import data_utils
 
 # Hyperparameters
 dtype = tf.float16  # or tf.float32
@@ -50,36 +50,36 @@ dtype = tf.float16  # or tf.float32
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 buckets = [(10, 40), (20, 40), (30, 100), (50, 100)]
 size = 1024  # Size of each model layer
-num_layers = 3  # Number of layers in the model
+num_layers = 1  # Number of layers in the model TODO was originally 3 -> change?
 learning_rate = .5
 learning_rate_decay_factor = .99
 max_gradient_norm = 5.0  # Clip gradients to this norm
 batch_size = 32  # Batch size used during training
-forward_only = True
+max_train_data_size = 0
+steps_per_checkpoint = 200
 
 train_dir = "/tmp"  # TODO change to a permanent directory in the git repo?
 data_dir = "/tmp"
 
-tf.app.flags.DEFINE_integer("max_train_data_size", 0,
-                            "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
-                            "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_boolean("decode", False,
-                            "Set to True for interactive decoding.")
-tf.app.flags.DEFINE_boolean("self_test", False,
-                            "Run a self-test if this is set to True.")
-tf.app.flags.DEFINE_boolean("use_fp16", False,
-                            "Train using fp16 instead of fp32.")
+# tf.app.flags.DEFINE_boolean("decode", False,
+#                             "Set to True for interactive decoding.")
+# tf.app.flags.DEFINE_boolean("self_test", False,
+#                             "Run a self-test if this is set to True.")
+# tf.app.flags.DEFINE_boolean("use_fp16", False,
+#                             "Train using fp16 instead of fp32.")
+#
+# FLAGS = tf.app.flags.FLAGS
 
-FLAGS = tf.app.flags.FLAGS
-
-eos_index = 0
-alphabet = ['~', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
-            'u', 'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
+pad_index = 0
+go_index = 1
+eos_index = 2
+special_vocab = ['#', ' ', '~']
+vocab = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+         'u', 'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
 
 
 def read_data(dataset_path, max_size=None):
-    """Read data from source and target files and put into buckets.
+    """Read dialogue from file, make input and output pairs and put into buckets.
 
     Args:
       dataset_path: path to a file containing a dialog, consecutive lines being
@@ -93,7 +93,7 @@ def read_data(dataset_path, max_size=None):
         into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
         len(target) < _buckets[n][1]; source and target are lists of token-ids.
     """
-    data_set = [[] for _ in _buckets]
+    data_set = [[] for _ in buckets]
     with open(dataset_path, "r") as f:
         input_sentence = f.readline()
         output_sentence = f.readline()
@@ -106,20 +106,20 @@ def read_data(dataset_path, max_size=None):
             input_chars = []
             for i in input_sentence:
                 try:
-                    input_chars.append(alphabet.index(i))
+                    input_chars.append(vocab.index(i) + len(special_vocab))
                 except ValueError:
                     continue
             output_chars = []
             for i in output_sentence:
                 try:
-                    output_chars.append(alphabet.index(i))
+                    output_chars.append(vocab.index(i) + len(special_vocab))
                 except ValueError:
                     continue
             output_chars.append(eos_index)
 
-            for bucket_id in xrange(len(_buckets)):
-                bucket_max_input_size = _buckets[bucket_id][0]
-                bucket_max_output_size = _buckets[bucket_id][1]
+            for bucket_id in xrange(len(buckets)):
+                bucket_max_input_size = buckets[bucket_id][0]
+                bucket_max_output_size = buckets[bucket_id][1]
                 if len(input_chars) < bucket_max_input_size and len(output_chars) < bucket_max_output_size:
                     data_set[bucket_id].append([input_chars, output_chars])
                     break
@@ -131,7 +131,6 @@ def read_data(dataset_path, max_size=None):
 
 def create_model(session, forward_only):
     """Create translation model and initialize or load parameters in session."""
-    dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
     model = seq2seq_model.Seq2SeqModel(
         buckets,
         size,
@@ -153,28 +152,28 @@ def create_model(session, forward_only):
 
 
 def train():
-    """Train a en->fr translation model using WMT data."""
     # Prepare WMT data.
-    print("Preparing WMT data in %s" % FLAGS.data_dir)
-    en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
-        FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
+    print("Preparing data in %s" % data_dir)
+    # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
+    #     FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
+    dataset_path, eval_dataset_path = data_utils.prepare_data(blahblah)
 
     with tf.Session() as sess:
         # Create model.
-        print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+        print("Creating %d layers of %d units." % (num_layers, size))
         model = create_model(sess, False)
 
         # Read data into buckets and compute their sizes.
         print("Reading development and training data (limit: %d)."
-              % FLAGS.max_train_data_size)
-        dev_set = read_data(en_dev, fr_dev)
-        train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
-        train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
+              % max_train_data_size)
+        dev_set = read_data(eval_dataset_path)
+        training_set = read_data(dataset_path, max_train_data_size)
+        train_bucket_sizes = [len(training_set[b]) for b in xrange(len(buckets))]
         train_total_size = float(sum(train_bucket_sizes))
 
         # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
         # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
-        # the size if i-th training bucket, as used later.
+        # the size of i-th training bucket. Used to pick random buckets for training.
         train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                                for i in xrange(len(train_bucket_sizes))]
 
@@ -191,16 +190,17 @@ def train():
 
             # Get a batch and make a step.
             start_time = time.time()
-            encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                train_set, bucket_id)
-            _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+            encoder_inputs, decoder_inputs, target_weights = model.get_batch(  # TODO review get_batch method
+                training_set, bucket_id)
+            _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,  # TODO review step method
                                          target_weights, bucket_id, False)
-            step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-            loss += step_loss / FLAGS.steps_per_checkpoint
+            # To get averages when a checkpoint has arrived, divide by steps_per_checkpoint
+            step_time += (time.time() - start_time) / steps_per_checkpoint
+            loss += step_loss / steps_per_checkpoint
             current_step += 1
 
             # Once in a while, we save checkpoint, print statistics, and run evals.
-            if current_step % FLAGS.steps_per_checkpoint == 0:
+            if current_step % steps_per_checkpoint == 0:
                 # Print statistics for the previous epoch.
                 perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                 print("global step %d learning rate %.4f step-time %.2f perplexity "
@@ -211,13 +211,15 @@ def train():
                     sess.run(model.learning_rate_decay_op)
                 previous_losses.append(loss)
                 # Save checkpoint and zero timer and loss.
-                checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+                checkpoint_path = os.path.join(train_dir, "chars.ckpt")
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+
                 step_time, loss = 0.0, 0.0
+
                 # Run evals on development set and print their perplexity.
-                for bucket_id in xrange(len(_buckets)):
+                for bucket_id in xrange(len(buckets)):
                     if len(dev_set[bucket_id]) == 0:
-                        print("  eval: empty bucket %d" % (bucket_id))
+                        print("  eval: empty bucket %d" % bucket_id)
                         continue
                     encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                         dev_set, bucket_id)

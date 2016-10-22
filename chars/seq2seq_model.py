@@ -25,7 +25,7 @@ import numpy as np
 import tensorflow as tf
 
 # from six.moves import xrange  # pylint: disable=redefined-builtin
-from tensorflow.models.rnn.translate import data_utils
+from chars import data_utils
 
 
 class Seq2SeqModel(object):
@@ -72,6 +72,7 @@ class Seq2SeqModel(object):
           learning_rate_decay_factor: decay learning rate by this much when needed.
           use_lstm: if true, we use LSTM cells instead of GRU cells.
           forward_only: if set, we do not construct the backward pass in the model.
+            So no backpropagation ops are set, and no losses are calculated etc.
           dtype: the data type to use to store internal variables.
         """
         self.buckets = buckets
@@ -96,7 +97,7 @@ class Seq2SeqModel(object):
                 encoder_inputs,
                 decoder_inputs,
                 cell,
-                dtype=dtype)
+                dtype=dtype)  # TODO mustn't feed_previous be added (forward_only)?
 
         # Feeds for inputs.
         self.encoder_inputs = []
@@ -118,7 +119,8 @@ class Seq2SeqModel(object):
         # Training outputs and losses.
         self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
             self.encoder_inputs, self.decoder_inputs, targets,
-            self.target_weights, buckets, lambda x, y: seq2seq_f(x, y))
+            self.target_weights, buckets,
+            lambda x, y: seq2seq_f(x, y))  # TODO see original seq2seq_model.py: seq2seq_f(x, y, forward_only)
 
         # Gradients and SGD update operation for training the model.
         params = tf.trainable_variables()
@@ -196,7 +198,7 @@ class Seq2SeqModel(object):
         else:
             return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
 
-    def get_batch(self, data, bucket_id):
+    def get_batch(self, data, bucket_id):  # TODO Rewrite!
         """Get a random batch of data from the specified bucket, prepare for step.
 
         To feed data in step(..) it must be a list of batch-major vectors, while

@@ -24,8 +24,8 @@ import random
 import numpy as np
 import tensorflow as tf
 
+
 # from six.moves import xrange  # pylint: disable=redefined-builtin
-from chars import data_utils
 
 
 class Seq2SeqModel(object):
@@ -97,7 +97,7 @@ class Seq2SeqModel(object):
                 encoder_inputs,
                 decoder_inputs,
                 cell,
-                dtype=dtype)  # TODO mustn't feed_previous be added (forward_only)?
+                dtype=dtype)  # TODO mustn't feed_previous be added (forward_only)? (see original file)
 
         # Feeds for inputs.
         self.encoder_inputs = []

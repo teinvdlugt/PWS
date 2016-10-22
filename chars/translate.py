@@ -13,20 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Binary for training translation models and decoding from them.
+"""Binary for training conversational models and decoding from them."""
 
-Running this program without --decode will download the WMT corpus into
-the directory specified as --data_dir and tokenize it in a very basic way,
-and then start training a model saving checkpoints to --train_dir.
-
-Running with --decode starts an interactive loop so you can see how
-the current checkpoint translates English sentences into French.
-
-See the following papers for more information on neural translation models.
- * http://arxiv.org/abs/1409.3215
- * http://arxiv.org/abs/1409.0473
- * http://arxiv.org/abs/1412.2007
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -42,7 +30,7 @@ import tensorflow as tf
 
 # from six.moves import xrange  # pylint: disable=redefined-builtin
 from chars import seq2seq_model
-from chars import data_utils
+from chars import data_utils2
 
 # Hyperparameters
 dtype = tf.float16  # or tf.float32
@@ -61,22 +49,13 @@ steps_per_checkpoint = 200
 train_dir = "/tmp"  # TODO change to a permanent directory in the git repo?
 data_dir = "/tmp"
 
+
 # tf.app.flags.DEFINE_boolean("decode", False,
 #                             "Set to True for interactive decoding.")
 # tf.app.flags.DEFINE_boolean("self_test", False,
 #                             "Run a self-test if this is set to True.")
-# tf.app.flags.DEFINE_boolean("use_fp16", False,
-#                             "Train using fp16 instead of fp32.")
 #
 # FLAGS = tf.app.flags.FLAGS
-
-pad_index = 0
-go_index = 1
-eos_index = 2
-special_vocab = ['#', ' ', '~']
-vocab = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
-         'u', 'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
-total_vocab = [special_vocab + vocab]
 
 
 def read_data(dataset_path, max_size=None):
@@ -104,19 +83,9 @@ def read_data(dataset_path, max_size=None):
             if count == max_size:
                 break
 
-            input_chars = []
-            for i in input_sentence:
-                try:
-                    input_chars.append(vocab.index(i) + len(special_vocab))
-                except ValueError:
-                    continue
-            output_chars = []
-            for i in output_sentence:
-                try:
-                    output_chars.append(vocab.index(i) + len(special_vocab))
-                except ValueError:
-                    continue
-            output_chars.append(eos_index)
+            input_chars = data_utils2.sentence_to_token_ids(input_sentence)
+            output_chars = data_utils2.sentence_to_token_ids(output_sentence)
+            output_chars.append(data_utils2.EOS_ID)
 
             for bucket_id in xrange(len(buckets)):
                 bucket_max_input_size = buckets[bucket_id][0]
@@ -156,9 +125,8 @@ def train():
     """Train the model!"""
     # Prepare dialogue data.
     print("Preparing data in %s" % data_dir)
-    # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
-    #     FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
-    dataset_path, eval_dataset_path = data_utils.prepare_data(blahblah)
+    train_dataset_path = "./dataset.txt"
+    eval_dataset_path = "./eval_dataset.txt"
 
     with tf.Session() as sess:
         # Create model.
@@ -168,8 +136,8 @@ def train():
         # Read data into buckets and compute their sizes.
         print("Reading development and training data (limit: %d)."
               % max_train_data_size)
-        dev_set = read_data(eval_dataset_path)
-        training_set = read_data(dataset_path, max_train_data_size)
+        test_set = read_data(eval_dataset_path)
+        training_set = read_data(train_dataset_path, max_train_data_size)
         train_bucket_sizes = [len(training_set[b]) for b in xrange(len(buckets))]
         train_total_size = float(sum(train_bucket_sizes))
 
@@ -220,11 +188,11 @@ def train():
 
                 # Run evaluations on development set and print their perplexity.
                 for bucket_id in xrange(len(buckets)):
-                    if len(dev_set[bucket_id]) == 0:
+                    if len(test_set[bucket_id]) == 0:
                         print("  eval: empty bucket %d" % bucket_id)
                         continue
                     encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                        dev_set, bucket_id)
+                        test_set, bucket_id)
                     _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                                  target_weights, bucket_id, True)
                     eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
@@ -248,13 +216,13 @@ def decode():
 
         while sentence:
             # Get token-ids for the input sentence.
-            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)  # TODO Create function
+            token_ids = data_utils2.sentence_to_token_ids(sentence)
             # Which bucket does it belong to?
             bucket_id = min([b for b in xrange(len(buckets))
                              if buckets[b][0] > len(token_ids)])
             # Get a 1-element batch to feed the sentence to the model.
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                # Creating dictionary, not list, because there's only one bucket_id, maybe != 0
+                # Creating dictionary, not list, because there's only one bucket_id which is maybe != 0
                 {bucket_id: [(token_ids, [])]},
                 bucket_id)
             # Get output logits for the sentence.
@@ -263,10 +231,10 @@ def decode():
             # This is a greedy decoder - outputs are just argmaxes of output_logits.
             outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
             # If there is an EOS symbol in outputs, cut them at that point.
-            if data_utils.EOS_ID in outputs:  # TODO rewrite according to data_utils
-                outputs = outputs[:outputs.index(data_utils.EOS_ID)]
+            if data_utils2.EOS_ID in outputs:  # TODO rewrite according to data_utils
+                outputs = outputs[:outputs.index(data_utils2.EOS_ID)]
             # Print out the response sentence corresponding to outputs.
-            print(total_vocab[output] for output in outputs)
+            print(data_utils2.TOTAL_VOCAB[output] for output in outputs)
 
             # Read next input line
             print("> ", end="")

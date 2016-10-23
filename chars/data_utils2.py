@@ -5,12 +5,13 @@ from __future__ import print_function
 PAD_SYMBOL = '#'
 GO_SYMBOL = '>'
 EOS_SYMBOL = '<'
+UNK_SYMBOL = '~'
 
 PAD_ID = 0
 GO_ID = 1
 EOS_ID = 2
-# TODO also create 'UNKNOWN' token?
-SPECIAL_VOCAB = ['#', '>', '<']  # Will be the start of TOTAL_VOCAB
+UNK_ID = 3
+SPECIAL_VOCAB = ['#', '>', '<', '~']  # Will be the start of TOTAL_VOCAB
 
 VOCAB = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
          'u', 'v', 'w', 'x', 'y', 'z', '.', ',', '!', '?', ' ']
@@ -32,13 +33,10 @@ def sentence_to_token_ids(sentence):
       a list of integers, the token-ids for the sentence.
     """
 
-    tokens = []
+    token_ids = []
     for c in sentence:
-        try:
-            tokens.append(VOCAB.index(c) + len(SPECIAL_VOCAB))
-        except ValueError:
-            # Ignoring non-vocab characters
-            # TODO replace non-vocab characters with UNK token? Also in translate.read_data!
-            continue
-
-    return tokens
+        if c in VOCAB:
+            token_ids.append(VOCAB.index(c) + len(SPECIAL_VOCAB))
+        else:
+            token_ids.append(UNK_ID)
+    return token_ids

@@ -46,7 +46,7 @@ def basic_character_tokenizer(sentence):
     return [c for c in sentence]
 
 
-def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
+def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                       tokenizer=None, normalize_digits=True):
     """Create vocabulary file (if it does not exist yet) from data file.
 
@@ -60,16 +60,16 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
 
     Args:
       vocabulary_path: path where the vocabulary will be created.
-      data_path: data file that will be used to create vocabulary.
+      data_file: data file that will be used to create vocabulary.
       max_vocabulary_size: limit on the size of the created vocabulary.
       tokenizer: a function to use to tokenize each data sentence;
         if None, basic_tokenizer will be used.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
     if not gfile.Exists(vocabulary_path):
-        print("Creating vocabulary %s from data %s" % (vocabulary_path, data_path))
+        print("Creating vocabulary %s from data %s" % (vocabulary_path, data_file))
         vocab = {}
-        with gfile.GFile(data_path, mode="rb") as f:
+        with gfile.GFile(data_file, mode="rb") as f:
             counter = 0
             for line in f:
                 counter += 1
@@ -181,7 +181,7 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
-def prepare_wmt_data(train_file, test_file, data_dir, vocab_size, tokenizer=None):
+def prepare_dialogue_data(train_file, test_file, data_dir, vocab_size, tokenizer=None):
     """Get WMT data into data_dir, create vocabularies and tokenize data.
 
     Args:

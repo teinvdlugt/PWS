@@ -25,9 +25,6 @@ import numpy as np
 import tensorflow as tf
 
 
-# from six.moves import xrange  # pylint: disable=redefined-builtin
-
-
 class Seq2SeqModel(object):
     """Sequence-to-sequence model with attention and for multiple buckets.
 
@@ -91,13 +88,13 @@ class Seq2SeqModel(object):
         if num_layers > 1:
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
-        # The seq2seq function: we use embedding for the input and attention.
+        # The seq2seq function.
         def seq2seq_f(encoder_inputs, decoder_inputs):
             return tf.nn.seq2seq.basic_rnn_seq2seq(
                 encoder_inputs,
                 decoder_inputs,
                 cell,
-                dtype=dtype)  # TODO mustn't feed_previous be added (forward_only)? (see original file)
+                dtype=dtype)  # TODO mustn't feed_previous be added (if forward_only)? (see original file)
 
         # Feeds for inputs.
         self.encoder_inputs = []

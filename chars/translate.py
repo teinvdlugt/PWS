@@ -36,7 +36,7 @@ from chars import data_utils2
 dtype = tf.float16  # or tf.float32
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-buckets = [(10, 40), (20, 40), (30, 100), (50, 100), (100, 200), (200,200)]
+buckets = [(10, 40), (20, 40), (30, 100), (50, 100), (100, 200), (200, 200)]
 size = 1024  # Size of each model layer
 num_layers = 1  # Number of layers in the model TODO was originally 3 -> change?
 learning_rate = .5
@@ -274,4 +274,4 @@ def main(_):
 
 if __name__ == "__main__":
     # tf.app.run()
-    pass
+    self_test()

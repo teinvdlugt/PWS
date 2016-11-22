@@ -39,6 +39,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+
 # from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from embedded_chars import data_utils
@@ -58,7 +59,7 @@ tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "checkpoints", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
@@ -169,6 +170,9 @@ def train():
         train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                                for i in xrange(len(train_bucket_sizes))]
 
+        # File to document losses.
+        loss_graph_file = "eval/" + str(time.time()).replace(".", "") + ".graph"
+
         # This is the training loop.
         step_time, loss = 0.0, 0.0
         current_step = 0
@@ -191,45 +195,57 @@ def train():
             _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                          target_weights, bucket_id, False)
             print("Step loss: " + str(step_loss))
+
+            save_loss(loss_graph_file, step_loss)
+
             step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
             loss += step_loss / FLAGS.steps_per_checkpoint
             current_step += 1
 
             # Once in a while, we save checkpoint, print statistics, and run evals.
-            if True or current_step % FLAGS.steps_per_checkpoint == 0:
-                # Print statistics for the previous epoch.
-                print("Printing statistics")
-                perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-                print("global step %d learning rate %.4f step-time %.2f perplexity "
-                      "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-                                step_time, perplexity))
-                # Decrease learning rate if no improvement was seen over last 3 times.
-                if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-                    sess.run(model.learning_rate_decay_op)
-                    print("Learning rate decayed.")
 
-                previous_losses.append(loss)
-                print("Previous losses:\n")
-                for _loss in previous_losses:
-                    print("   " + str(_loss))
+            # Print statistics for the previous epoch.
+            print("Printing statistics")
+            perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
+            print("global step %d learning rate %.4f step-time %.2f perplexity "
+                  "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
+                            step_time, perplexity))
+            # Decrease learning rate if no improvement was seen over last 3 times.
+            if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+                sess.run(model.learning_rate_decay_op)
+                print("Learning rate decayed.")
+
+            if current_step % FLAGS.steps_per_checkpoint == 0:
                 # Save checkpoint and zero timer and loss.
-                # checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt") # TODO uncomment
-                # model.saver.save(sess, checkpoint_path, global_step=model.global_step) # TODO uncomment
-                print("Checkpoint saved ACTUALLY NOT")
-                step_time, loss = 0.0, 0.0
-                # Run evals on development set and print their perplexity.
-                for bucket_id in xrange(len(_buckets)):
-                    if len(dev_set[bucket_id]) == 0:
-                        print("  eval: empty bucket %d" % bucket_id)
-                        continue
-                    encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                        dev_set, bucket_id)
-                    _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                                 target_weights, bucket_id, True)
-                    eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
-                        "inf")
-                    print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
-                sys.stdout.flush()
+                print("Saving checkpoint...")
+                checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+                model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+
+            previous_losses.append(loss)
+            print("Previous losses:\n")
+            for _loss in previous_losses:
+                print("   " + str(_loss * FLAGS.steps_per_checkpoint))
+
+            step_time, loss = 0.0, 0.0
+            # Run evals on development set and print their perplexity.
+            for bucket_id in xrange(len(_buckets)):
+                if len(dev_set[bucket_id]) == 0:
+                    print("  eval: empty bucket %d" % bucket_id)
+                    continue
+                encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+                    dev_set, bucket_id)
+                _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                             target_weights, bucket_id, True)
+                eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
+                    "inf")
+                print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+            sys.stdout.flush()
+
+
+def save_loss(filename, loss):
+    _file = open(filename, mode='a')
+    _file.write(str(loss) + "\n")
+    _file.close()
 
 
 def decode():
@@ -287,7 +303,7 @@ def self_test():
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 data_set, bucket_id)
             step = model.step(sess, encoder_inputs, decoder_inputs, target_weights,
-                       bucket_id, False)
+                              bucket_id, False)
             print("Encoder inputs:\n" + str(encoder_inputs))
             print("Decoder inputs:\n" + str(decoder_inputs))
             print("Target weights:\n" + str(target_weights))

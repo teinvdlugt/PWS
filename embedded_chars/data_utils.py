@@ -85,7 +85,7 @@ def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                         vocab[char] = 1
             vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
             if len(vocab_list) > max_vocabulary_size:
-                vocab_list = vocab_list[:max_vocabulary_size]
+                vocab_list = vocab_list[:max_vocabulary_size - 1]
             with gfile.GFile(vocabulary_path, mode="wb") as vocab_file:
                 for w in vocab_list:
                     vocab_file.write(w + b"\n")

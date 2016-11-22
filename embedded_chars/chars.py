@@ -39,7 +39,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from six.moves import xrange  # pylint: disable=redefined-builtin
+# from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from embedded_chars import data_utils
 from embedded_chars import seq2seq_model
@@ -71,7 +71,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(10, 40), (20, 40), (30, 100), (50, 100), (100, 200), (200, 200)]
+_buckets = [(10, 40), (30, 100), (60, 100), (100, 200)]
 
 
 def read_data(dialogue_file, max_size=None):
@@ -271,19 +271,26 @@ def self_test():
             bucket_id = random.choice([0, 1])
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 data_set, bucket_id)
-            model.step(sess, encoder_inputs, decoder_inputs, target_weights,
+            step = model.step(sess, encoder_inputs, decoder_inputs, target_weights,
                        bucket_id, False)
+            print("Encoder inputs:\n" + str(encoder_inputs))
+            print("Decoder inputs:\n" + str(decoder_inputs))
+            print("Target weights:\n" + str(target_weights))
+            print("Step:\n" + str(step))
 
 
 def main(_):
-    if FLAGS.self_test:
-        self_test()
-    elif FLAGS.decode:
-        decode()
-    else:
-        train()
+    decode()
+    # if FLAGS.self_test:
+    #     self_test()
+    # elif FLAGS.decode:
+    #     decode()
+    # else:
+    #     train()
 
 
 if __name__ == "__main__":
     # tf.app.run()
     train()
+    # decode()
+    # self_test()

@@ -121,6 +121,7 @@ class Seq2SeqModel(object):
                                                       name="decoder{0}".format(i)))
             self.target_weights.append(tf.placeholder(dtype, shape=[None],
                                                       name="weight{0}".format(i)))
+        print("   Created encoder_inputs and decoder_inputs placeholders")
 
         # Our targets are decoder inputs shifted by one.
         targets = [self.decoder_inputs[i + 1]
@@ -143,6 +144,7 @@ class Seq2SeqModel(object):
                 self.encoder_inputs, self.decoder_inputs, targets,
                 self.target_weights, buckets,
                 lambda x, y: seq2seq_f(x, y, False))
+        print("   Created model with buckets")
 
         # Gradients and SGD update operation for training the model.
         params = tf.trainable_variables()
@@ -150,13 +152,15 @@ class Seq2SeqModel(object):
             self.gradient_norms = []
             self.updates = []
             opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-            for b in xrange(len(buckets)):
+            print("   Created GradientDescentOptimizer")
+            for b in range(len(buckets)):
                 gradients = tf.gradients(self.losses[b], params)
                 clipped_gradients, norm = tf.clip_by_global_norm(gradients,
                                                                  max_gradient_norm)
                 self.gradient_norms.append(norm)
                 self.updates.append(opt.apply_gradients(
                     zip(clipped_gradients, params), global_step=self.global_step))
+                print("   Constructed gradients: %d of %d" % (b, len(buckets)))
 
         self.saver = tf.train.Saver(tf.all_variables())
 

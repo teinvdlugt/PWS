@@ -1,4 +1,5 @@
 /ignored/
 /.idea/
 ./embedded_chars/data/
+./word/data/
 *.txt

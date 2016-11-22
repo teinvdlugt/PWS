@@ -29,8 +29,8 @@ import numpy as np
 import tensorflow as tf
 
 # from six.moves import xrange  # pylint: disable=redefined-builtin
-from chars import seq2seq_model
-from chars import data_utils
+import seq2seq_model
+import data_utils
 
 # Hyperparameters
 dtype = tf.float16  # or tf.float32
@@ -125,7 +125,7 @@ def train():
     """Train the model!"""
     # Prepare dialogue data.
     print("Preparing data in %s" % data_dir)
-    train_dataset_path = "./dataset.txt"
+    train_dataset_path = "./train_data.txt"
     eval_dataset_path = "./eval_dataset.txt"
 
     with tf.Session() as sess:
@@ -248,7 +248,7 @@ def self_test():
         print("Self-test for neural conversational model.")
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
         model = seq2seq_model.Seq2SeqModel([(3, 3), (6, 6)], 32, 2,
-                                           5.0, 32, 0.3, 0.99, dtype=tf.float16)
+                                           5.0, 32, 0.3, 0.99)
         sess.run(tf.initialize_all_variables())
 
         # Fake data set for both the (3, 3) and (6, 6) bucket.

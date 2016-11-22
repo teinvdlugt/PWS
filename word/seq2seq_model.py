@@ -22,7 +22,10 @@ from __future__ import print_function
 import random
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+
+from tensorflow.models.rnn.translate import data_utils
 
 
 class Seq2SeqModel(object):
@@ -41,6 +44,7 @@ class Seq2SeqModel(object):
     """
 
     def __init__(self,
+                 vocab_size,
                  buckets,
                  size,
                  num_layers,
@@ -49,11 +53,14 @@ class Seq2SeqModel(object):
                  learning_rate,
                  learning_rate_decay_factor,
                  use_lstm=False,
+                 num_samples=512,
                  forward_only=False,
                  dtype=tf.float32):
         """Create the model.
 
         Args:
+          source_vocab_size: size of the source vocabulary.
+          target_vocab_size: size of the target vocabulary.
           buckets: a list of pairs (I, O), where I specifies maximum input length
             that will be processed in that bucket, and O specifies maximum output
             length. Training instances that have inputs longer than I or outputs
@@ -68,10 +75,11 @@ class Seq2SeqModel(object):
           learning_rate: learning rate to start with.
           learning_rate_decay_factor: decay learning rate by this much when needed.
           use_lstm: if true, we use LSTM cells instead of GRU cells.
+          num_samples: number of samples for sampled softmax.
           forward_only: if set, we do not construct the backward pass in the model.
-            So no backpropagation ops are set, and no losses are calculated etc.
           dtype: the data type to use to store internal variables.
         """
+        self.vocab_size = vocab_size
         self.buckets = buckets
         self.batch_size = batch_size
         self.learning_rate = tf.Variable(
@@ -79,6 +87,30 @@ class Seq2SeqModel(object):
         self.learning_rate_decay_op = self.learning_rate.assign(
             self.learning_rate * learning_rate_decay_factor)
         self.global_step = tf.Variable(0, trainable=False)
+
+        # If we use sampled softmax, we need an output projection.
+        output_projection = None
+        softmax_loss_function = None
+        # Sampled softmax only makes sense if we sample less than vocabulary size.
+        if num_samples > 0 and num_samples < self.vocab_size:
+            w_t = tf.get_variable("proj_w", [self.vocab_size, size], dtype=dtype)
+            w = tf.transpose(w_t)
+            b = tf.get_variable("proj_b", [self.vocab_size], dtype=dtype)
+            output_projection = (w, b)
+
+            def sampled_loss(inputs, labels):
+                labels = tf.reshape(labels, [-1, 1])
+                # We need to compute the sampled_softmax_loss using 32bit floats to
+                # avoid numerical instabilities.
+                local_w_t = tf.cast(w_t, tf.float32)
+                local_b = tf.cast(b, tf.float32)
+                local_inputs = tf.cast(inputs, tf.float32)
+                return tf.cast(
+                    tf.nn.sampled_softmax_loss(local_w_t, local_b, local_inputs, labels,
+                                               num_samples, self.vocab_size),
+                    dtype)
+
+            softmax_loss_function = sampled_loss
 
         # Create the internal multi-layer cell for our RNN.
         single_cell = tf.nn.rnn_cell.GRUCell(size)
@@ -88,23 +120,28 @@ class Seq2SeqModel(object):
         if num_layers > 1:
             cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
-        # The seq2seq function.
-        def seq2seq_f(encoder_inputs, decoder_inputs):
-            return tf.nn.seq2seq.basic_rnn_seq2seq(
+        # The seq2seq function: we use embedding for the input and attention.
+        def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
+            return tf.nn.seq2seq.embedding_attention_seq2seq(
                 encoder_inputs,
                 decoder_inputs,
                 cell,
-                dtype=dtype)  # TODO mustn't feed_previous be added (if forward_only)? (see original file)
+                num_encoder_symbols=vocab_size,
+                num_decoder_symbols=vocab_size,
+                embedding_size=size,
+                output_projection=output_projection,
+                feed_previous=do_decode,
+                dtype=dtype)
 
         # Feeds for inputs.
         self.encoder_inputs = []
         self.decoder_inputs = []
         self.target_weights = []
         for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-            self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None, 35],
+            self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="encoder{0}".format(i)))
         for i in xrange(buckets[-1][1] + 1):
-            self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None, 35],
+            self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="decoder{0}".format(i)))
             self.target_weights.append(tf.placeholder(dtype, shape=[None],
                                                       name="weight{0}".format(i)))
@@ -114,10 +151,24 @@ class Seq2SeqModel(object):
                    for i in xrange(len(self.decoder_inputs) - 1)]
 
         # Training outputs and losses.
-        self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
-            self.encoder_inputs, self.decoder_inputs, targets,
-            self.target_weights, buckets,
-            lambda x, y: seq2seq_f(x, y))  # TODO see original seq2seq_model.py: seq2seq_f(x, y, forward_only)
+        if forward_only:
+            self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
+                self.encoder_inputs, self.decoder_inputs, targets,
+                self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
+                softmax_loss_function=softmax_loss_function)
+            # If we use output projection, we need to project outputs for decoding.
+            if output_projection is not None:
+                for b in xrange(len(buckets)):
+                    self.outputs[b] = [
+                        tf.matmul(output, output_projection[0]) + output_projection[1]
+                        for output in self.outputs[b]
+                        ]
+        else:
+            self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
+                self.encoder_inputs, self.decoder_inputs, targets,
+                self.target_weights, buckets,
+                lambda x, y: seq2seq_f(x, y, False),
+                softmax_loss_function=softmax_loss_function)
 
         # Gradients and SGD update operation for training the model.
         params = tf.trainable_variables()
@@ -195,7 +246,7 @@ class Seq2SeqModel(object):
         else:
             return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
 
-    def get_batch(self, data, bucket_id):  # TODO Rewrite!
+    def get_batch(self, data, bucket_id):
         """Get a random batch of data from the specified bucket, prepare for step.
 
         To feed data in step(..) it must be a list of batch-major vectors, while

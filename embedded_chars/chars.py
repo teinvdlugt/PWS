@@ -171,10 +171,10 @@ def train():
                                for i in xrange(len(train_bucket_sizes))]
 
         # File to document losses.
-        loss_graph_file = "eval/" + str(time.time()).replace(".", "") + ".graph"
+        loss_graph_file = "eval/" + str(time.time()).replace(".", "") + ".csv"
 
         # This is the training loop.
-        step_time, loss = 0.0, 0.0
+        avg_step_time, loss = 0.0, 0.0
         current_step = 0
         previous_losses = []
         while True:
@@ -192,11 +192,12 @@ def train():
                                          target_weights, bucket_id, False)
             print("Step %d, loss: %f" % (current_step + 1, step_loss))
 
-            save_loss(loss_graph_file, step_loss)
-
-            step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
+            step_time = time.time() - start_time
+            avg_step_time += step_time / FLAGS.steps_per_checkpoint
             loss += step_loss / FLAGS.steps_per_checkpoint
             current_step += 1
+
+            save_loss_and_time(loss_graph_file, step_loss, step_time)
 
             # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
@@ -204,7 +205,7 @@ def train():
                 perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                 print("global step %d learning rate %.4f step-time %.2f perplexity "
                       "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-                                step_time, perplexity))
+                                avg_step_time, perplexity))
 
                 # Decrease learning rate if no improvement was seen over last 3 times.
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
@@ -216,7 +217,7 @@ def train():
                 print("Saving checkpoint...")
                 checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-                step_time, loss = 0.0, 0.0
+                avg_step_time, loss = 0.0, 0.0
                 # Run evals on development set and print their perplexity.
                 for bucket_id in xrange(len(_buckets)):
                     if len(dev_set[bucket_id]) == 0:
@@ -232,9 +233,9 @@ def train():
                 sys.stdout.flush()
 
 
-def save_loss(filename, loss):
+def save_loss_and_time(filename, loss, step_time):
     _file = open(filename, mode='a')
-    _file.write(str(loss) + "\n")
+    _file.write("%f,%d\n" % (loss, int(round(step_time * 1000))))
     _file.close()
 
 

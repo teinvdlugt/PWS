@@ -183,18 +183,14 @@ def train():
             random_number_01 = np.random.random_sample()
             bucket_id = min([i for i in xrange(len(train_buckets_scale))
                              if train_buckets_scale[i] > random_number_01])
-            print("Beginning of step " + str(current_step) + ".\nBucket type to train on: " + str(_buckets[bucket_id]))
 
             # Get a batch and make a step.
             start_time = time.time()
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 train_set, bucket_id)
-            print("Encoder_inputs: " + str(encoder_inputs))
-            print("Decoder_inputs: " + str(encoder_inputs))
-            print("The model is making a step...")
             _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                          target_weights, bucket_id, False)
-            print("Step loss: " + str(step_loss))
+            print("Step %d, loss: %f" % (current_step + 1, step_loss))
 
             save_loss(loss_graph_file, step_loss)
 
@@ -203,43 +199,37 @@ def train():
             current_step += 1
 
             # Once in a while, we save checkpoint, print statistics, and run evals.
+            if current_step % FLAGS.steps_per_checkpoint == 0:
+                # Print statistics for the previous epoch.
+                perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
+                print("global step %d learning rate %.4f step-time %.2f perplexity "
+                      "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
+                                step_time, perplexity))
 
-            # Print statistics for the previous epoch.
-            print("Printing statistics")
-            perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-            print("global step %d learning rate %.4f step-time %.2f perplexity "
-                  "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-                            step_time, perplexity))
-            # Decrease learning rate if no improvement was seen over last 3 times.
-            if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-                sess.run(model.learning_rate_decay_op)
+                # Decrease learning rate if no improvement was seen over last 3 times.
+                if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+                    sess.run(model.learning_rate_decay_op)
                 print("Learning rate decayed.")
 
-            if current_step % FLAGS.steps_per_checkpoint == 0:
+                previous_losses.append(loss)
                 # Save checkpoint and zero timer and loss.
                 print("Saving checkpoint...")
                 checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-
-            previous_losses.append(loss)
-            print("Previous losses:\n")
-            for _loss in previous_losses:
-                print("   " + str(_loss * FLAGS.steps_per_checkpoint))
-
-            step_time, loss = 0.0, 0.0
-            # Run evals on development set and print their perplexity.
-            for bucket_id in xrange(len(_buckets)):
-                if len(dev_set[bucket_id]) == 0:
-                    print("  eval: empty bucket %d" % bucket_id)
-                    continue
-                encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                    dev_set, bucket_id)
-                _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                             target_weights, bucket_id, True)
-                eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
-                    "inf")
-                print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
-            sys.stdout.flush()
+                step_time, loss = 0.0, 0.0
+                # Run evals on development set and print their perplexity.
+                for bucket_id in xrange(len(_buckets)):
+                    if len(dev_set[bucket_id]) == 0:
+                        print("  eval: empty bucket %d" % bucket_id)
+                        continue
+                    encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+                        dev_set, bucket_id)
+                    _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                                 target_weights, bucket_id, True)
+                    eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
+                        "inf")
+                    print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+                sys.stdout.flush()
 
 
 def save_loss(filename, loss):

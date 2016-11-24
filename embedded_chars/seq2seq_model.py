@@ -113,6 +113,7 @@ class Seq2SeqModel(object):
         self.encoder_inputs = []
         self.decoder_inputs = []
         self.target_weights = []
+        print("   Creating encoder_inputs and decoder_inputs placeholders...")
         for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
             self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                       name="encoder{0}".format(i)))
@@ -121,13 +122,13 @@ class Seq2SeqModel(object):
                                                       name="decoder{0}".format(i)))
             self.target_weights.append(tf.placeholder(dtype, shape=[None],
                                                       name="weight{0}".format(i)))
-        print("   Created encoder_inputs and decoder_inputs placeholders")
 
         # Our targets are decoder inputs shifted by one.
         targets = [self.decoder_inputs[i + 1]
                    for i in xrange(len(self.decoder_inputs) - 1)]
 
         # Training outputs and losses.
+        print("   Creating model with buckets...")
         if forward_only:
             self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
                 self.encoder_inputs, self.decoder_inputs, targets,
@@ -144,23 +145,22 @@ class Seq2SeqModel(object):
                 self.encoder_inputs, self.decoder_inputs, targets,
                 self.target_weights, buckets,
                 lambda x, y: seq2seq_f(x, y, False))
-        print("   Created model with buckets")
 
         # Gradients and SGD update operation for training the model.
         params = tf.trainable_variables()
         if not forward_only:
             self.gradient_norms = []
             self.updates = []
+            print("   Creating GradientDescentOptimizer...")
             opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-            print("   Created GradientDescentOptimizer")
             for b in range(len(buckets)):
+                print("   Constructing gradients: %d of %d" % (b + 1, len(buckets)))
                 gradients = tf.gradients(self.losses[b], params)
                 clipped_gradients, norm = tf.clip_by_global_norm(gradients,
                                                                  max_gradient_norm)
                 self.gradient_norms.append(norm)
                 self.updates.append(opt.apply_gradients(
                     zip(clipped_gradients, params), global_step=self.global_step))
-                print("   Constructed gradients: %d of %d" % (b, len(buckets)))
 
         self.saver = tf.train.Saver(tf.all_variables())
 

@@ -271,7 +271,7 @@ def decode():
             if data_utils.EOS_ID in outputs:
                 outputs = outputs[:outputs.index(data_utils.EOS_ID)]
             # Print out French sentence corresponding to outputs.
-            print(" ".join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
+            print("".join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
             print("> ", end="")
             sys.stdout.flush()
             sentence = sys.stdin.readline()
@@ -302,17 +302,13 @@ def self_test():
 
 
 def main(_):
-    decode()
-    # if FLAGS.self_test:
-    #     self_test()
-    # elif FLAGS.decode:
-    #     decode()
-    # else:
-    #     train()
+    if FLAGS.self_test:
+        self_test()
+    elif FLAGS.decode:
+        decode()
+    else:
+        train()
 
 
 if __name__ == "__main__":
-    # tf.app.run()
-    train()
-    # decode()
-    # self_test()
+    tf.app.run()

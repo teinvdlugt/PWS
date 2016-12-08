@@ -95,10 +95,10 @@ def initialize_vocabulary(vocabulary_path):
     """Initialize vocabulary from file.
 
     We assume the vocabulary is stored one-item-per-line, so a file:
-      dog
-      cat
-    will result in a vocabulary {"dog": 0, "cat": 1}, and this function will
-    also return the reversed-vocabulary ["dog", "cat"].
+      e
+      o
+    will result in a vocabulary {"e": 0, "o": 1}, and this function will
+    also return the reversed-vocabulary ["e", "o"].
 
     Args:
       vocabulary_path: path to the file containing the vocabulary.
@@ -114,7 +114,7 @@ def initialize_vocabulary(vocabulary_path):
         rev_vocab = []
         with gfile.GFile(vocabulary_path, mode="rb") as f:
             rev_vocab.extend(f.readlines())
-        rev_vocab = [line.strip() for line in rev_vocab]
+        rev_vocab = [line.rstrip('\n') for line in rev_vocab]
         vocab = dict([(x, y) for (y, x) in enumerate(rev_vocab)])
         return vocab, rev_vocab
     else:

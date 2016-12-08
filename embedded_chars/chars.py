@@ -42,8 +42,8 @@ import tensorflow as tf
 
 # from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from embedded_chars import data_utils
-from embedded_chars import seq2seq_model
+import data_utils
+import seq2seq_model
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,

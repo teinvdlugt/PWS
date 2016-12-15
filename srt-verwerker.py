@@ -39,6 +39,8 @@ for filename in filenames:
             if not lineIsNumber(line) and line.count("-->") == 0 and len(line.strip()) > 0:
                 if line.startswith("-"):
                     line = line[1:]
+                    # Make sure that this line is treated as spoken by a new character
+                    prevLineWasUtt = False
                 if prevLineWasUtt:
                     newfile.write(" ")
                 else:
@@ -47,7 +49,4 @@ for filename in filenames:
                 prevLineWasUtt = True
             else:
                 prevLineWasUtt = False
-
-            if count % 100 == 0:
-                print "Reading line %d" % count
 newfile.close()

@@ -13,19 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Binary for training translation models and decoding from them.
+"""Train the chatbot or speak with it.
 
-Running this program without --decode will download the WMT corpus into
-the directory specified as --data_dir and tokenize it in a very basic way,
-and then start training a model saving checkpoints to --train_dir.
-
-Running with --decode starts an interactive loop so you can see how
-the current checkpoint translates English sentences into French.
-
-See the following papers for more information on neural translation models.
- * http://arxiv.org/abs/1409.3215
- * http://arxiv.org/abs/1409.0473
- * http://arxiv.org/abs/1412.2007
+Running this program with --decode will let you speak with the neural network.
+Running without --decode will start the training process or continue training
+from the last checkpoint.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -37,13 +29,10 @@ import random
 import sys
 import time
 
-import numpy as np
-import tensorflow as tf
-
-# from six.moves import xrange  # pylint: disable=redefined-builtin
-
 import data_utils
+import numpy as np
 import seq2seq_model
+import tensorflow as tf
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
@@ -76,21 +65,18 @@ _buckets = [(10, 40), (30, 100), (60, 100), (100, 200)]
 
 
 def read_data(dialogue_file, max_size=None):
-    """Read data from source and target files and put into buckets.
+    """Read data from a dialogue file and put it into buckets.
 
     Args:
-      source_path: path to the files with token-ids for the source language.
-      target_path: path to the file with token-ids for the target language;
-        it must be aligned with the source file: n-th line contains the desired
-        output for n-th line from the source_path.
-      max_size: maximum number of lines to read, all other will be ignored;
-        if 0 or None, data files will be read completely (no limit).
+        dialogue_file: a file containing text converted to token-ids.
+        max_size: maximum number of lines to read, all other will be ignored;
+            if 0 or None, data files will be read completely (no limit).
 
     Returns:
       data_set: a list of length len(_buckets); data_set[n] contains a list of
-        (source, target) pairs read from the provided data files that fit
-        into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
-        len(target) < _buckets[n][1]; source and target are lists of token-ids.
+        (input, output) pairs read from the provided data file that fit
+        into the n-th bucket, i.e., such that len(input) < _buckets[n][0] and
+        len(output) < _buckets[n][1]; input and output are lists of token-ids.
     """
     data_set = [[] for _ in _buckets]
     with tf.gfile.GFile(dialogue_file, 'r') as f:
@@ -118,7 +104,7 @@ def read_data(dialogue_file, max_size=None):
 
 
 def create_model(session, forward_only):
-    """Create translation model and initialize or load parameters in session."""
+    """Create seq2seq model and initialize or load parameters in session."""
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
     model = seq2seq_model.Seq2SeqModel(
         FLAGS.vocab_size,
@@ -143,9 +129,9 @@ def create_model(session, forward_only):
 
 
 def train():
-    """Train a en->fr translation model using WMT data."""
-    # Prepare WMT data.
-    print("Preparing WMT data in %s" % FLAGS.data_dir)
+    """Train the chatbot."""
+    # Prepare dialogue data.
+    print("Preparing dialogue data in %s" % FLAGS.data_dir)
     train_data, eval_data, _ = data_utils.prepare_dialogue_data(
         "train_data.txt", "eval_data.txt", FLAGS.data_dir, FLAGS.vocab_size)
 
@@ -210,7 +196,7 @@ def train():
                 # Decrease learning rate if no improvement was seen over last 3 times.
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
                     sess.run(model.learning_rate_decay_op)
-                print("Learning rate decayed.")
+                    print("Learning rate decayed.")
 
                 previous_losses.append(loss)
                 # Save checkpoint and zero timer and loss.
@@ -270,7 +256,7 @@ def decode():
             # If there is an EOS symbol in outputs, cut them at that point.
             if data_utils.EOS_ID in outputs:
                 outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-            # Print out French sentence corresponding to outputs.
+            # Print out the network's response to the input.
             print("".join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
             print("> ", end="")
             sys.stdout.flush()
@@ -278,9 +264,9 @@ def decode():
 
 
 def self_test():
-    """Test the translation model."""
+    """Test the seq2seq model."""
     with tf.Session() as sess:
-        print("Self-test for neural translation model.")
+        print("Self-test for seq2seq chatbot model.")
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
         model = seq2seq_model.Seq2SeqModel(10, [(3, 3), (6, 6)], 32, 2,
                                            5.0, 32, 0.3, 0.99, num_samples=8)
@@ -295,10 +281,6 @@ def self_test():
                 data_set, bucket_id)
             step = model.step(sess, encoder_inputs, decoder_inputs, target_weights,
                               bucket_id, False)
-            print("Encoder inputs:\n" + str(encoder_inputs))
-            print("Decoder inputs:\n" + str(decoder_inputs))
-            print("Target weights:\n" + str(target_weights))
-            print("Step:\n" + str(step))
 
 
 def main(_):

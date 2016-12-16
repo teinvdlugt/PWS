@@ -77,6 +77,8 @@ def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                     print("  processing line %d" % counter)
                 line = tf.compat.as_bytes(line)
                 tokens = tokenizer(line) if tokenizer else basic_character_tokenizer(line)
+                # Remove newline
+                tokens = tokens[:-1]
                 for c in tokens:
                     char = _DIGIT_RE.sub(b"0", c) if normalize_digits else c
                     if char in vocab:
@@ -131,6 +133,7 @@ def sentence_to_token_ids(sentence, vocabulary,
 
     Args:
       sentence: the sentence in bytes format to convert to token-ids.
+        This shouldn't contain a newline at the end.
       vocabulary: a dictionary mapping tokens to integers.
       tokenizer: a function to use to tokenize each sentence;
         if None, basic_tokenizer will be used.
@@ -173,12 +176,12 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
             with gfile.GFile(target_path, mode="w") as tokens_file:
                 counter = 0
                 for line in data_file:
+                    # Remove newline
+                    line = line[:-1]
                     counter += 1
                     if counter % 10000 == 0:
                         print("  tokenizing line %d" % counter)
-                    token_ids = sentence_to_token_ids(line, vocab, tokenizer,
-                                                      # TODO does this also convert newline characters? shouldn't
-                                                      normalize_digits)
+                    token_ids = sentence_to_token_ids(line, vocab, tokenizer, normalize_digits)
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 

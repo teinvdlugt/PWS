@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilities for downloading data from WMT, tokenizing, vocabularies."""
+"""Utilities for tokenizing, creating vocabularies."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -50,7 +50,7 @@ def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                       tokenizer=None, normalize_digits=True):
     """Create vocabulary file (if it does not exist yet) from data file.
 
-    Data file is assumed to contain one sentence per line. Each sentence is
+    Data file is assumed to contain one utterance per line. Each utterance is
     tokenized and digits are normalized (if normalize_digits is set).
     Vocabulary contains the most-frequent tokens up to max_vocabulary_size.
     We write it to vocabulary_path in a one-token-per-line format, so that later
@@ -125,9 +125,9 @@ def sentence_to_token_ids(sentence, vocabulary,
                           tokenizer=None, normalize_digits=True):
     """Convert a string to list of integers representing token-ids.
 
-    For example, a sentence "I have a dog" may become tokenized into
-    ["I", "have", "a", "dog"] and with vocabulary {"I": 1, "have": 2,
-    "a": 4, "dog": 7"} this function will return [1, 2, 4, 7].
+    For example, a sentence "hello" may become tokenized into
+    ["h", "e", "l", "l", "o"] and with vocabulary {"h": 1, "e": 2,
+    "l": 4, "o": 7"} this function will return [1, 2, 4, 4, 7].
 
     Args:
       sentence: the sentence in bytes format to convert to token-ids.
@@ -177,29 +177,27 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
                     if counter % 10000 == 0:
                         print("  tokenizing line %d" % counter)
                     token_ids = sentence_to_token_ids(line, vocab, tokenizer,
+                                                      # TODO does this also convert newline characters? shouldn't
                                                       normalize_digits)
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
 def prepare_dialogue_data(train_file, test_file, data_dir, vocab_size, tokenizer=None):
-    """Get WMT data into data_dir, create vocabularies and tokenize data.
+    """From the dialogue files, create vocabularies and tokenize data in data_dir.
 
     Args:
         train_file: file with dialogue to use for network training
         test_file: file with dialogue to use for network evaluation
-        data_dir: directory in which the data sets will be stored.
+        data_dir: directory in which the data sets and vocab will be stored.
         vocab_size: maximum size of the vocab to create and use.
         tokenizer: a function to use to tokenize each data sentence;
-        if None, basic_tokenizer will be used.
+            if None, basic_tokenizer will be used.
 
     Returns:
-      A tuple of 6 elements:
-        (1) path to the token-ids for English training data-set,
-        (2) path to the token-ids for French training data-set,
-        (3) path to the token-ids for English development data-set,
-        (4) path to the token-ids for French development data-set,
-        (5) path to the English vocabulary file,
-        (6) path to the French vocabulary file.
+        A tuple of 3 elements:
+            (1) path to the token-ids for training dataset,
+            (2) path to the token-ids for testing dataset,
+            (3) path to the vocabulary file.
     """
     vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
     create_vocabulary(vocab_path, train_file, vocab_size, tokenizer)

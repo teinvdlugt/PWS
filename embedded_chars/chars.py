@@ -45,7 +45,9 @@ tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Original
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
 tf.app.flags.DEFINE_integer("vocab_size", 45, "Vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "checkpoints", "Training directory.")
+tf.app.flags.DEFINE_string("train_dir", "checkpoints", "Directory to store the training checkpoints.")
+tf.app.flags.DEFINE_string("train_dialogue", "../subtitles/dataset1_train.txt", "The dialogue file used for training.")
+tf.app.flags.DEFINE_string("test_dialogue", "../subtitles/dataset1_test.txt", "The dialogue file used for testing.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
@@ -122,9 +124,8 @@ def create_model(session, forward_only):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
-        print("Created model with fresh parameters.")
+        print("Creating model with fresh parameters.")
         session.run(tf.initialize_all_variables())
-        print("Initialized all variables.")
     return model
 
 
@@ -132,8 +133,8 @@ def train():
     """Train the chatbot."""
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, eval_data, _ = data_utils.prepare_dialogue_data(
-        "train_data.txt", "eval_data.txt", FLAGS.data_dir, FLAGS.vocab_size)
+    train_data, test_data, _ = data_utils.prepare_dialogue_data(
+        FLAGS.train_dialogue, FLAGS.test_dialogue, FLAGS.data_dir, FLAGS.vocab_size)
 
     with tf.Session() as sess:
         # Create model.
@@ -143,7 +144,7 @@ def train():
         # Read data into buckets and compute their sizes.
         print("Reading development and training data (limit: %d)."
               % FLAGS.max_train_data_size)
-        dev_set = read_data(eval_data)
+        test_set = read_data(test_data)
         train_set = read_data(train_data, FLAGS.max_train_data_size)
         train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
         train_total_size = float(sum(train_bucket_sizes))
@@ -157,7 +158,7 @@ def train():
                                for i in xrange(len(train_bucket_sizes))]
 
         # File to document losses.
-        loss_graph_file = "eval/" + str(time.time()).replace(".", "") + ".csv"
+        loss_graph_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
 
         # This is the training loop.
         avg_step_time, loss = 0.0, 0.0
@@ -201,16 +202,16 @@ def train():
                 previous_losses.append(loss)
                 # Save checkpoint and zero timer and loss.
                 print("Saving checkpoint...")
-                checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+                checkpoint_path = os.path.join(FLAGS.train_dir, "chatbot.ckpt")
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
                 avg_step_time, loss = 0.0, 0.0
                 # Run evals on development set and print their perplexity.
                 for bucket_id in xrange(len(_buckets)):
-                    if len(dev_set[bucket_id]) == 0:
+                    if len(test_set[bucket_id]) == 0:
                         print("  eval: empty bucket %d" % bucket_id)
                         continue
                     encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                        dev_set, bucket_id)
+                        test_set, bucket_id)
                     _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                                  target_weights, bucket_id, True)
                     eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
@@ -232,7 +233,7 @@ def decode():
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab_path = os.path.join("data", "chars_vocab%d" % FLAGS.vocab_size)
+        vocab_path = os.path.join(FLAGS.data_dir, "chars_vocab%d" % FLAGS.vocab_size)
         vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
 
         # Decode from standard input.
@@ -279,8 +280,8 @@ def self_test():
             bucket_id = random.choice([0, 1])
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 data_set, bucket_id)
-            step = model.step(sess, encoder_inputs, decoder_inputs, target_weights,
-                              bucket_id, False)
+            model.step(sess, encoder_inputs, decoder_inputs, target_weights,
+                       bucket_id, False)
 
 
 def main(_):

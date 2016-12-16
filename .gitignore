@@ -1,5 +1,5 @@
 /ignored/
 /.idea/
-./embedded_chars/data/
-./word/data/
+/word/data/
 *.txt
+*.pyc

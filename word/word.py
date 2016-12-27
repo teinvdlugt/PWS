@@ -39,7 +39,6 @@ import time
 import logging
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import data_utils
@@ -52,16 +51,16 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 24, "Size of each model layer.")  # was 1024
-tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # was 3
-tf.app.flags.DEFINE_integer("vocab_size", 300, "Vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
+tf.app.flags.DEFINE_integer("size", 128, "Size of each model layer.")  # was 1024
+tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")  # was 3
+tf.app.flags.DEFINE_integer("vocab_size", 10000, "Vocabulary size.")
+tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "checkpoints", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_boolean("decode", False,
+tf.app.flags.DEFINE_boolean("decode", True,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
@@ -79,10 +78,7 @@ def read_data(dialogue_path, max_size=None):
     """Read data from source and target files and put into buckets.
 
     Args:
-      source_path: path to the files with token-ids for the source language.
-      target_path: path to the file with token-ids for the target language;
-        it must be aligned with the source file: n-th line contains the desired
-        output for n-th line from the source_path.
+      dialogue_path: path to the files with token-ids for the source language.
       max_size: maximum number of lines to read, all other will be ignored;
         if 0 or None, data files will be read completely (no limit).
 
@@ -131,7 +127,7 @@ def create_model(session, forward_only):
         forward_only=forward_only,
         dtype=dtype)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-    if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+    if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
@@ -166,6 +162,8 @@ def train():
         train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                                for i in xrange(len(train_bucket_sizes))]
 
+        loss_file = os.path.join(FLAGS.train_dir, "loss.csv")
+
         # This is the training loop.
         step_time, loss = 0.0, 0.0
         current_step = 0
@@ -183,9 +181,13 @@ def train():
                 train_set, bucket_id)
             _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                          target_weights, bucket_id, False)
+            print("Step: %d, loss: %f" % (current_step + 1, step_loss))
+
             step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
             loss += step_loss / FLAGS.steps_per_checkpoint
             current_step += 1
+
+            save_loss(loss_file, step_loss, step_time)  # save to file
 
             # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
@@ -198,6 +200,7 @@ def train():
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
                     sess.run(model.learning_rate_decay_op)
                 previous_losses.append(loss)
+
                 # Save checkpoint and zero timer and loss.
                 checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
@@ -217,6 +220,12 @@ def train():
                 sys.stdout.flush()
 
 
+def save_loss(file_name, loss, step_time):
+    _file = open(file_name, mode='a')
+    _file.write("%f,%d\n" % (loss, int(round(step_time * 1000))))
+    _file.close()
+
+
 def decode():
     with tf.Session() as sess:
         # Create model and load parameters.
@@ -224,7 +233,7 @@ def decode():
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab_path = os.path.join("data", "vocab%d" % FLAGS.vocab_size)
+        vocab_path = os.path.join("data", "word_vocab%d" % FLAGS.vocab_size)
         vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
 
         # Decode from standard input.
@@ -268,7 +277,7 @@ def self_test():
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
         model = seq2seq_model.Seq2SeqModel(10, 10, [(3, 3), (6, 6)], 32, 2,
                                            5.0, 32, 0.3, 0.99, num_samples=8)
-        sess.run(tf.global_variables_initializer())
+        sess.run(tf.initialize_all_variables())
 
         # Fake data set for both the (3, 3) and (6, 6) bucket.
         data_set = ([([1, 1], [2, 2]), ([3, 3], [4]), ([5], [6])],

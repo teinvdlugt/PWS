@@ -24,6 +24,8 @@ import re
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
+import opensubtitles_util
+
 # Special vocabulary symbols - we always put them at the start.
 _PAD = b"#"
 _GO = b">"
@@ -185,13 +187,11 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
-def prepare_dialogue_data(train_file, test_file, data_dir, vocab_size, tokenizer=None):
+def prepare_dialogue_data(data_dir, vocab_size, tokenizer=None):
     """From the dialogue files, create vocabularies and tokenize data in data_dir.
 
     Args:
-        train_file: file with dialogue to use for network training
-        test_file: file with dialogue to use for network evaluation
-        data_dir: directory in which the data sets and vocab will be stored.
+        data_dir: directory in which the data and vocab will be stored.
         vocab_size: maximum size of the vocab to create and use.
         tokenizer: a function to use to tokenize each data sentence;
             if None, basic_tokenizer will be used.
@@ -202,9 +202,13 @@ def prepare_dialogue_data(train_file, test_file, data_dir, vocab_size, tokenizer
             (2) path to the token-ids for testing dataset,
             (3) path to the vocabulary file.
     """
-    vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
-    create_vocabulary(vocab_path, train_file, vocab_size, tokenizer)
+    train_file, test_file = opensubtitles_util.get_data(data_dir)
 
+    # Create vocab file
+    vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
+    create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
+
+    # Create token ids for the training data
     train_ids_path = os.path.join(data_dir, "chars_train_ids%d" % vocab_size)
     data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
 

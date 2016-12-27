@@ -43,8 +43,8 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
-tf.app.flags.DEFINE_integer("vocab_size", 100, "Vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
+tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")
+tf.app.flags.DEFINE_string("data_dir", "../data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "checkpoints", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "../subtitles/dataset1_train.txt", "The dialogue file used for training.")
 tf.app.flags.DEFINE_string("test_dialogue", "../subtitles/dataset1_test.txt", "The dialogue file used for testing.")
@@ -133,8 +133,7 @@ def train():
     """Train the chatbot."""
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, test_data, _ = data_utils.prepare_dialogue_data(
-        FLAGS.train_dialogue, FLAGS.test_dialogue, FLAGS.data_dir, FLAGS.vocab_size)
+    train_data, test_data, _ = data_utils.prepare_dialogue_data(FLAGS.data_dir, FLAGS.vocab_size)
 
     with tf.Session() as sess:
         # Create model.

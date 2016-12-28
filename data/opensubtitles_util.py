@@ -96,13 +96,10 @@ Split the data from the original file into a train file and test file.
     """
     # Count number of lines in orig_file
     num_lines = 0
-    try:
-        with open(orig_file) as f:
-            for i, l in enumerate(f):
-                pass
-            num_lines = i + 1
-    except:  # Just to be sure
-        print("Splitting file wasn't successful")
+    with open(orig_file) as f:
+        for i, l in enumerate(f):
+            pass
+        num_lines = i + 1
 
     test_data_lines = int(num_lines / 100. * percentage)
     with open(orig_file) as orig_f:

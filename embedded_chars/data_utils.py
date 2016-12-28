@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilities for tokenizing, creating vocabularies."""
+"""Utilities for tokenizing and creating vocabularies."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,7 +24,7 @@ import re
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
-import opensubtitles_util
+from data import opensubtitles_util
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = b"#"

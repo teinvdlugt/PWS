@@ -80,7 +80,7 @@ def process_data(data_dir):
     unzipped_path = maybe_unzip(zipped_file, os.path.join(data_dir, unzipped))
     files = get_all_files_recursively(unzipped_path, "xml.gz")
     print("Processing files to dialogue file...")
-    with open(dialogue_file, 'w') as f:
+    with open(os.path.join(data_dir, dialogue_file), 'w') as f:
         for file_path in files:
             f.write(process_zipped_xml_file(file_path))
 
@@ -117,8 +117,8 @@ Split the data from the original file into a train file and test file.
 
 
 def get_data(data_dir):
-    if not (os.path.exists(os.path.join(data_dir, train_file))
-                    and os.path.exists(os.path.join(data_dir, test_file))):
+    if not (os.path.exists(os.path.join(data_dir, train_file)) and
+            os.path.exists(os.path.join(data_dir, test_file))):
         # Download data, remove XML tags and put into one big file (dialogue_file)
         if not os.path.exists(os.path.join(data_dir, dialogue_file)):
             process_data(data_dir)

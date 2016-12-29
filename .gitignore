@@ -3,5 +3,6 @@
 /word/data/
 *.pyc
 /data/os
+/data/os2
 /data/subscene
 /data/first_dataset

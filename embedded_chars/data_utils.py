@@ -48,8 +48,8 @@ def basic_character_tokenizer(sentence):
     return [c for c in sentence]
 
 
-def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
-                      tokenizer=None, normalize_digits=True):
+def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
+                            tokenizer=None, all_lowercase=True, normalize_digits=True):
     """Create vocabulary file (if it does not exist yet) from data file.
 
     Data file is assumed to contain one utterance per line. Each utterance is
@@ -66,6 +66,7 @@ def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
       max_vocabulary_size: limit on the size of the created vocabulary.
       tokenizer: a function to use to tokenize each data sentence;
         if None, basic_tokenizer will be used.
+      all_lowercase: Boolean; if true, all characters will be made lowercase.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
     if not gfile.Exists(vocabulary_path):
@@ -75,8 +76,12 @@ def create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
             counter = 0
             for line in f:
                 counter += 1
-                if counter % 10000 == 0:
+                if counter % 100000 == 0:
                     print("  processing line %d" % counter)
+
+                if all_lowercase:
+                    line = line.lower()
+
                 line = tf.compat.as_bytes(line)
                 tokens = tokenizer(line) if tokenizer else basic_character_tokenizer(line)
                 # Remove newline
@@ -126,7 +131,7 @@ def initialize_vocabulary(vocabulary_path):
 
 
 def sentence_to_token_ids(sentence, vocabulary,
-                          tokenizer=None, normalize_digits=True):
+                          tokenizer=None, all_lowercase=True, normalize_digits=True):
     """Convert a string to list of integers representing token-ids.
 
     For example, a sentence "hello" may become tokenized into
@@ -139,11 +144,15 @@ def sentence_to_token_ids(sentence, vocabulary,
       vocabulary: a dictionary mapping tokens to integers.
       tokenizer: a function to use to tokenize each sentence;
         if None, basic_tokenizer will be used.
+      all_lowercase: Boolean; if true, sentence will be converted to lowercase first.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
 
     Returns:
       a list of integers, the token-ids for the sentence.
     """
+
+    if all_lowercase:
+        sentence = sentence.lower()
 
     if tokenizer:
         words = tokenizer(sentence)
@@ -155,8 +164,8 @@ def sentence_to_token_ids(sentence, vocabulary,
     return [vocabulary.get(_DIGIT_RE.sub(b"0", w), UNK_ID) for w in words]
 
 
-def data_to_token_ids(data_path, target_path, vocabulary_path,
-                      tokenizer=None, normalize_digits=True):
+def maybe_data_to_token_ids(data_path, target_path, vocabulary_path,
+                            tokenizer=None, all_lowercase=True, normalize_digits=True):
     """Tokenize data file and turn into token-ids using given vocabulary file.
 
     This function loads data line-by-line from data_path, calls the above
@@ -169,6 +178,7 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
       vocabulary_path: path to the vocabulary file.
       tokenizer: a function to use to tokenize each sentence;
         if None, basic_tokenizer will be used.
+      all_lowercase: Boolean; if true, all text will be converted to lowercase.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
     if not gfile.Exists(target_path):
@@ -181,9 +191,9 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
                     # Remove newline
                     line = line[:-1]
                     counter += 1
-                    if counter % 10000 == 0:
+                    if counter % 100000 == 0:
                         print("  tokenizing line %d" % counter)
-                    token_ids = sentence_to_token_ids(line, vocab, tokenizer, normalize_digits)
+                    token_ids = sentence_to_token_ids(line, vocab, tokenizer, all_lowercase, normalize_digits)
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
@@ -202,18 +212,18 @@ def prepare_dialogue_data(data_dir, vocab_size, tokenizer=None):
             (2) path to the token-ids for testing dataset,
             (3) path to the vocabulary file.
     """
-    train_file, test_file = opensubtitles_util.get_data(data_dir)
-
-    # Create vocab file
     vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
-    create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
-
-    # Create token ids for the training data
     train_ids_path = os.path.join(data_dir, "chars_train_ids%d" % vocab_size)
-    data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
-
-    # Create token ids for the development data.
     test_ids_path = os.path.join(data_dir, "chars_test_ids%d" % vocab_size)
-    data_to_token_ids(test_file, test_ids_path, vocab_path, tokenizer)
+
+    if not (os.path.exists(vocab_path) and os.path.exists(train_ids_path) and os.path.exists(test_ids_path)):
+        if vocab_size == 60:
+            # I have already put a tokenized version of the dataset online with vocab=60, so better download that
+            train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_tokenized_data(data_dir)
+        else:
+            train_file, test_file = opensubtitles_util.get_data(data_dir)
+            maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
+            maybe_data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
+            maybe_data_to_token_ids(test_file, test_ids_path, vocab_path, tokenizer)
 
     return train_ids_path, test_ids_path, vocab_path

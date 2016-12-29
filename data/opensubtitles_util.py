@@ -8,7 +8,8 @@ dataset_url = "https://teinvdlugt.stackstorage.com/public-share/t8IBEatZsz4oUcN/
 zipped_file = "osdataset.tar.gz"
 train_file = "train.txt"
 test_file = "test.txt"
-unzipped = "unzipped/"
+tokenized_dataset_url = "https://teinvdlugt.stackstorage.com/public-share/6fHjGRTHLIHfMWx/preview?path=%2F&mode=full"
+zipped_tokenized_file = "OSDataset60M60vCh.tar.gz"
 
 
 def maybe_download(directory, filename, url):
@@ -42,7 +43,7 @@ def unzip(fname, new_path):
 
 def get_data(data_dir):
     if not (os.path.exists(os.path.join(data_dir, train_file)) and
-            os.path.exists(os.path.join(data_dir, test_file))):
+                os.path.exists(os.path.join(data_dir, test_file))):
         # Download dataset
         downloaded_path = maybe_download(data_dir, zipped_file, dataset_url)
         # Extract dataset
@@ -51,3 +52,15 @@ def get_data(data_dir):
     else:
         print("The data was already downloaded and processed")
     return os.path.join(data_dir, train_file), os.path.join(data_dir, test_file)
+
+
+def get_tokenized_data(data_dir):
+    print("Downloading tokenized data and vocabulary")
+    if not (os.path.exists(os.path.join(data_dir, "chars_test_ids60")) and
+            os.path.exists(os.path.join(data_dir, "chars_train_ids60")) and
+            os.path.exists(os.path.join(data_dir, "chars_vocab60"))):
+        downloaded_file = maybe_download(data_dir, zipped_tokenized_file, tokenized_dataset_url)
+        unzip(downloaded_file, data_dir)
+    return (os.path.join(data_dir, "chars_train_ids60"),
+            os.path.join(data_dir, "chars_test_ids60"),
+            os.path.join(data_dir, "chars_vocab60"))

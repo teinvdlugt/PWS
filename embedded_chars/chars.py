@@ -29,37 +29,11 @@ import random
 import sys
 import time
 
-import data_utils
 import numpy as np
-import seq2seq_model
 import tensorflow as tf
 
-tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
-tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
-                          "Learning rate decays by this much.")
-tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
-                          "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size", 64,
-                            "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
-tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
-tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "../data/os", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "checkpoints", "Directory to store the training checkpoints.")
-tf.app.flags.DEFINE_string("train_dialogue", "../subtitles/dataset1_train.txt", "The dialogue file used for training.")
-tf.app.flags.DEFINE_string("test_dialogue", "../subtitles/dataset1_test.txt", "The dialogue file used for testing.")
-tf.app.flags.DEFINE_integer("max_train_data_size", 0,
-                            "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
-                            "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_boolean("decode", False,
-                            "Set to True for interactive decoding.")
-tf.app.flags.DEFINE_boolean("self_test", False,
-                            "Run a self-test if this is set to True.")
-tf.app.flags.DEFINE_boolean("use_fp16", False,
-                            "Train using fp16 instead of fp32.")
-
-FLAGS = tf.app.flags.FLAGS
+from . import data_utils
+from . import seq2seq_model
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
@@ -105,7 +79,7 @@ def read_data(dialogue_file, max_size=None):
     return data_set
 
 
-def create_model(session, forward_only):
+def create_model(session, forward_only, FLAGS):
     """Create seq2seq model and initialize or load parameters in session."""
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
     model = seq2seq_model.Seq2SeqModel(
@@ -129,7 +103,7 @@ def create_model(session, forward_only):
     return model
 
 
-def train():
+def train(FLAGS):
     """Train the chatbot."""
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
@@ -138,7 +112,7 @@ def train():
     with tf.Session() as sess:
         # Create model.
         print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
-        model = create_model(sess, False)
+        model = create_model(sess, False, FLAGS)
 
         # Read data into buckets and compute their sizes.
         print("Reading development and training data (limit: %d)."
@@ -225,10 +199,10 @@ def save_loss_and_time(filename, loss, step_time):
     _file.close()
 
 
-def decode():
+def decode(FLAGS):
     with tf.Session() as sess:
         # Create model and load parameters.
-        model = create_model(sess, True)
+        model = create_model(sess, True, FLAGS)
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
@@ -263,13 +237,13 @@ def decode():
             sentence = sys.stdin.readline()
 
 
-def self_test():
+def self_test(FLAGS):
     """Test the seq2seq model."""
     with tf.Session() as sess:
         print("Self-test for seq2seq chatbot model.")
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
         model = seq2seq_model.Seq2SeqModel(10, [(3, 3), (6, 6)], 32, 2,
-                                           5.0, 32, 0.3, 0.99, num_samples=8)
+                                           5.0, 32, 0.3, 0.99)
         sess.run(tf.initialize_all_variables())
 
         # Fake data set for both the (3, 3) and (6, 6) bucket.
@@ -283,13 +257,13 @@ def self_test():
                        bucket_id, False)
 
 
-def main(_):
+def main(FLAGS):
     if FLAGS.self_test:
-        self_test()
+        self_test(FLAGS)
     elif FLAGS.decode:
-        decode()
+        decode(FLAGS)
     else:
-        train()
+        train(FLAGS)
 
 
 if __name__ == "__main__":

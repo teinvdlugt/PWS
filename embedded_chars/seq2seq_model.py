@@ -23,8 +23,8 @@ import random
 
 import numpy as np
 import tensorflow as tf
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import data_utils
+
+from . import data_utils
 
 
 class Seq2SeqModel(object):

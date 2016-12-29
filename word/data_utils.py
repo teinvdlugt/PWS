@@ -195,12 +195,9 @@ def prepare_dialogue_data(train_file, test_file, data_dir, vocab_size, tokenizer
 
     Returns:
       A tuple of 6 elements:
-        (1) path to the token-ids for English training data-set,
-        (2) path to the token-ids for French training data-set,
-        (3) path to the token-ids for English development data-set,
-        (4) path to the token-ids for French development data-set,
-        (5) path to the English vocabulary file,
-        (6) path to the French vocabulary file.
+        (1) path to the token-ids for training data-set,
+        (2) path to the token-ids for development data-set,
+        (3) path to the vocabulary file.
     """
     vocab_path = os.path.join(data_dir, "word_vocab%d" % vocab_size)
     create_vocabulary(vocab_path, train_file, vocab_size, tokenizer)

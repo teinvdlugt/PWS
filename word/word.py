@@ -60,7 +60,7 @@ tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_boolean("decode", True,
+tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
@@ -137,7 +137,6 @@ def create_model(session, forward_only):
 
 
 def train():
-    """Train a en->fr translation model using WMT data."""
     # Prepare WMT data.
     print("Preparing WMT data in %s" % FLAGS.data_dir)
     train_data, eval_data, _ = data_utils.prepare_dialogue_data(
@@ -233,7 +232,7 @@ def decode():
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab_path = os.path.join("data", "word_vocab%d" % FLAGS.vocab_size)
+        vocab_path = os.path.join(FLAGS.data_dir, "word_vocab%d" % FLAGS.vocab_size)
         vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
 
         # Decode from standard input.

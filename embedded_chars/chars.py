@@ -55,7 +55,7 @@ def create_model(session, forward_only, FLAGS):
         forward_only=forward_only,
         dtype=dtype)
     if not os.path.exists(FLAGS.train_dir):
-        os.mkdir(FLAGS.train_dir)
+        os.makedirs(FLAGS.train_dir)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
     if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
@@ -94,12 +94,14 @@ def train(FLAGS):
 
         # File to document losses.
         loss_graph_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
+        if not os.path.exists(FLAGS.train_dir):
+            os.makedirs(FLAGS.train_dir)
 
         # This is the training loop.
         avg_step_time, loss = 0.0, 0.0
         current_step = 0
         previous_losses = []
-        while True:
+        while current_step < FLAGS.max_training_steps + 1:
             # Choose a bucket according to data distribution. We pick a random number
             # in [0, 1] and use the corresponding interval in train_buckets_scale.
             random_number_01 = np.random.random_sample()

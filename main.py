@@ -25,6 +25,8 @@ tf.app.flags.DEFINE_integer("max_read_test_data", 0,
                             "Limit on the size of test data to read into buckets (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
+tf.app.flags.DEFINE_integer("max_training_steps", 5000,
+                            "Amount of training steps to do when executing the TF application")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,

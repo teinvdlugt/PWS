@@ -54,7 +54,7 @@ def get_data(data_dir):
     return os.path.join(data_dir, train_file), os.path.join(data_dir, test_file)
 
 
-def get_tokenized_data(data_dir):
+def get_encoded_data(data_dir):
     print("Downloading tokenized data and vocabulary")
     if not (os.path.exists(os.path.join(data_dir, "chars_test_ids60")) and
             os.path.exists(os.path.join(data_dir, "chars_train_ids60")) and

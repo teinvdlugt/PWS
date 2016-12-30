@@ -19,8 +19,10 @@ tf.app.flags.DEFINE_string("data_dir", "PWS/data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "PWS/data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
 tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogue file used for testing.")
-tf.app.flags.DEFINE_integer("max_train_data_size", 0,
-                            "Limit on the size of training data (0: no limit).")
+tf.app.flags.DEFINE_integer("max_read_train_data", 0,
+                            "Limit on the size of training data to read into buckets (0: no limit).")
+tf.app.flags.DEFINE_integer("max_read_test_data", 0,
+                            "Limit on the size of test data to read into buckets (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,

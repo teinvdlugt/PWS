@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import os
 import re
+import sys
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
@@ -197,33 +199,126 @@ def maybe_data_to_token_ids(data_path, target_path, vocabulary_path,
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
-def prepare_dialogue_data(data_dir, vocab_size, tokenizer=None):
-    """From the dialogue files, create vocabularies and tokenize data in data_dir.
+def read_data(dialogue_file, buckets, max_lines=None):
+    """Read data from a dialogue file and put it into buckets.
 
     Args:
-        data_dir: directory in which the data and vocab will be stored.
-        vocab_size: maximum size of the vocab to create and use.
-        tokenizer: a function to use to tokenize each data sentence;
-            if None, basic_tokenizer will be used.
+        dialogue_file: a file containing text converted to token-ids.
+        buckets: an array containing the sizes of the buckets, in which to put the data
+        max_lines: maximum number of lines to read, all other will be ignored;
+            if 0 or None, data files will be read completely (no limit).
 
     Returns:
-        A tuple of 3 elements:
-            (1) path to the token-ids for training dataset,
-            (2) path to the token-ids for testing dataset,
-            (3) path to the vocabulary file.
+      data_set: a list of length len(_buckets); data_set[n] contains a list of
+        (input, output) pairs read from the provided data file that fit
+        into the n-th bucket, i.e., such that len(input) < _buckets[n][0] and
+        len(output) < _buckets[n][1]; input and output are lists of token-ids.
     """
-    vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
+    data_set = [[] for _ in buckets]
+    with tf.gfile.GFile(dialogue_file, 'r') as f:
+        input_sentence = f.readline()
+        output_sentence = f.readline()
+        count = 0
+        while input_sentence and output_sentence and (not max_lines or count < max_lines):
+            count += 1
+            if count % 100000 == 0:
+                print("  reading data line %d" % count)
+                sys.stdout.flush()
+
+            input_sentence_ids = [int(x) for x in input_sentence.split()]
+            output_sentence_ids = [int(x) for x in output_sentence.split()]
+            output_sentence_ids.append(EOS_ID)
+
+            for bucket_id, (input_size, output_size) in enumerate(buckets):
+                if len(input_sentence_ids) < input_size and len(output_sentence_ids) < output_size:
+                    data_set[bucket_id].append([input_sentence_ids, output_sentence_ids])
+                    break
+
+            input_sentence = f.readline()
+            output_sentence = f.readline()
+    return data_set
+
+
+def get_encoded_data(data_dir, vocab_size, tokenizer=None):
+    """Get the paths to the files containing the training and test data in id-form.
+    Make those files, in the case that they are not already available, using the plain text data.
+    Download those plain text data files if needed.
+
+    By 'encoded', I mean that the data doesn't consist of human-readable characters and words, but of
+    numbers which represent the index of those characters or words in the vocabulary.
+
+    Args:
+        data_dir: The directory where the data (plain text and id-form) should be or is stored.
+        vocab_size: The maximum size of the vocabulary, used when creating a new vocabulary is necessary.
+        tokenizer: The tokenizer to tokenize the plain text, before creating a vocabulary and putting the data
+         into id-form. If None, basic_character_tokenizer is used.
+
+    Returns:
+        A tuple containing the paths to the 1) encoded training data
+    """
     train_ids_path = os.path.join(data_dir, "chars_train_ids%d" % vocab_size)
     test_ids_path = os.path.join(data_dir, "chars_test_ids%d" % vocab_size)
+    vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
 
-    if not (os.path.exists(vocab_path) and os.path.exists(train_ids_path) and os.path.exists(test_ids_path)):
+    if not (os.path.exists(train_ids_path) and os.path.exists(test_ids_path)):
         if vocab_size == 60:
             # I have already put a tokenized version of the dataset online with vocab=60, so better download that
-            train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_tokenized_data(data_dir)
+            train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_encoded_data(data_dir)
         else:
             train_file, test_file = opensubtitles_util.get_data(data_dir)
             maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
             maybe_data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
             maybe_data_to_token_ids(test_file, test_ids_path, vocab_path, tokenizer)
 
-    return train_ids_path, test_ids_path, vocab_path
+    return train_ids_path, test_ids_path
+
+
+def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, max_read_test_data=0,
+                          read_again=False, save=True, tokenizer=None):
+    """From the dialogue files, create vocabularies and tokenize data in data_dir.
+
+    Args:
+        data_dir: directory in which the data and vocab will be stored.
+        buckets: an array containing the sizes of the buckets, in which to put the data
+        max_read_train_data: maximum amount of lines of training data to be read into buckets,
+         if data is going to be put into buckets again (not if the data is already in
+         buckets and read from a np.save file)
+        max_read_test_data: maximum amount of lines of test data to be read into buckets,
+         if data is going to be put into buckets again (not if the data is already in
+         buckets and read from a np.save file)
+        read_again: Whether to read the data into buckets again (True) or to load from an np.save file,
+         if available
+        save: True if you want to save the read-again data and thereby replace the old np.save file
+        vocab_size: maximum size of the vocab to create and use.
+        tokenizer: a function to use to tokenize each data sentence;
+            if None, basic_tokenizer will be used.
+
+    Returns:
+        A tuple of 2 elements:
+            (1) (numpy-)array containing the training data in buckets;
+            (2) (numpy-)array containing the test data in buckets.
+    """
+    train_ids_npsaved_path = os.path.join(data_dir, "chars_train_ids%d_array.npy" % vocab_size)
+    test_ids_npsaved_path = os.path.join(data_dir, "chars_test_ids%d_array.npy" % vocab_size)
+
+    # Get train data array
+    if read_again or not os.path.exists(train_ids_npsaved_path):
+        print(train_ids_npsaved_path)
+        train_ids_path, _ = get_encoded_data(data_dir, vocab_size, tokenizer)
+        train_ids_array = read_data(train_ids_path, buckets, max_read_train_data)
+        if save:
+            np.save(train_ids_npsaved_path, train_ids_array)
+    else:
+        print("hi2")
+        train_ids_array = np.load(train_ids_npsaved_path)
+
+    # Get test data array
+    if read_again or not os.path.exists(test_ids_npsaved_path):
+        _, test_ids_path = get_encoded_data(data_dir, vocab_size, tokenizer)
+        test_ids_array = read_data(test_ids_path, buckets, max_read_test_data)
+        if save:
+            np.save(test_ids_npsaved_path, test_ids_array)
+    else:
+        test_ids_array = np.load(test_ids_npsaved_path)
+
+    return train_ids_array, test_ids_array

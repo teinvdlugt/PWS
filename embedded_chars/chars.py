@@ -40,45 +40,6 @@ from . import seq2seq_model
 _buckets = [(10, 40), (30, 100), (60, 100), (100, 200)]
 
 
-def read_data(dialogue_file, max_size=None):
-    """Read data from a dialogue file and put it into buckets.
-
-    Args:
-        dialogue_file: a file containing text converted to token-ids.
-        max_size: maximum number of lines to read, all other will be ignored;
-            if 0 or None, data files will be read completely (no limit).
-
-    Returns:
-      data_set: a list of length len(_buckets); data_set[n] contains a list of
-        (input, output) pairs read from the provided data file that fit
-        into the n-th bucket, i.e., such that len(input) < _buckets[n][0] and
-        len(output) < _buckets[n][1]; input and output are lists of token-ids.
-    """
-    data_set = [[] for _ in _buckets]
-    with tf.gfile.GFile(dialogue_file, 'r') as f:
-        input_sentence = f.readline()
-        output_sentence = f.readline()
-        count = 0
-        while input_sentence and output_sentence and (not max_size or count < max_size):
-            count += 1
-            if count % 10000 == 0:
-                print("  reading data line %d" % count)
-                sys.stdout.flush()
-
-            input_sentence_ids = [int(x) for x in input_sentence.split()]
-            output_sentence_ids = [int(x) for x in output_sentence.split()]
-            output_sentence_ids.append(data_utils.EOS_ID)
-
-            for bucket_id, (input_size, output_size) in enumerate(_buckets):
-                if len(input_sentence_ids) < input_size and len(output_sentence_ids) < output_size:
-                    data_set[bucket_id].append([input_sentence_ids, output_sentence_ids])
-                    break
-
-            input_sentence = f.readline()
-            output_sentence = f.readline()
-    return data_set
-
-
 def create_model(session, forward_only, FLAGS):
     """Create seq2seq model and initialize or load parameters in session."""
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
@@ -93,6 +54,8 @@ def create_model(session, forward_only, FLAGS):
         FLAGS.learning_rate_decay_factor,
         forward_only=forward_only,
         dtype=dtype)
+    if not os.path.exists(FLAGS.train_dir):
+        os.mkdir(FLAGS.train_dir)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
     if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
@@ -107,7 +70,8 @@ def train(FLAGS):
     """Train the chatbot."""
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, test_data, _ = data_utils.prepare_dialogue_data(FLAGS.data_dir, FLAGS.vocab_size)
+    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.data_dir, FLAGS.vocab_size, _buckets,
+                                                             FLAGS.max_read_train_data, FLAGS.max_read_test_data)
 
     with tf.Session() as sess:
         # Create model.
@@ -116,10 +80,8 @@ def train(FLAGS):
 
         # Read data into buckets and compute their sizes.
         print("Reading development and training data (limit: %d)."
-              % FLAGS.max_train_data_size)
-        test_set = read_data(test_data)
-        train_set = read_data(train_data, FLAGS.max_train_data_size)
-        train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
+              % FLAGS.max_read_train_data)
+        train_bucket_sizes = [len(train_data[b]) for b in xrange(len(_buckets))]
         train_total_size = float(sum(train_bucket_sizes))
 
         print("Data read.")
@@ -147,7 +109,7 @@ def train(FLAGS):
             # Get a batch and make a step.
             start_time = time.time()
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                train_set, bucket_id)
+                train_data, bucket_id)
             _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                          target_weights, bucket_id, False)
             print("Step %d, loss: %f" % (current_step + 1, step_loss))
@@ -180,11 +142,11 @@ def train(FLAGS):
                 avg_step_time, loss = 0.0, 0.0
                 # Run evals on development set and print their perplexity.
                 for bucket_id in xrange(len(_buckets)):
-                    if len(test_set[bucket_id]) == 0:
+                    if len(test_data[bucket_id]) == 0:
                         print("  eval: empty bucket %d" % bucket_id)
                         continue
                     encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                        test_set, bucket_id)
+                        test_data, bucket_id)
                     _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                                  target_weights, bucket_id, True)
                     eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(

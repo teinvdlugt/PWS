@@ -54,15 +54,15 @@ def create_model(session, forward_only, FLAGS):
         FLAGS.learning_rate_decay_factor,
         forward_only=forward_only,
         dtype=dtype)
-    if not os.path.exists(FLAGS.train_dir):
-        os.makedirs(FLAGS.train_dir)
+    if not tf.gfile.Exists(FLAGS.train_dir):
+        tf.gfile.MkDir(FLAGS.train_dir)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
     if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
         print("Creating model with fresh parameters.")
-        session.run(tf.initialize_all_variables())
+        session.run(tf.global_variables_initializer())
     return model
 
 
@@ -82,6 +82,8 @@ def train(FLAGS):
         train_bucket_sizes = [len(train_data[b]) for b in xrange(len(_buckets))]
         train_total_size = float(sum(train_bucket_sizes))
 
+        print(" Bucket sizes: %s\n Total train size: %d" % (str(train_bucket_sizes), train_total_size))
+
         # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
         # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
         # the size if i-th training bucket, as used later.
@@ -90,8 +92,8 @@ def train(FLAGS):
 
         # File to document losses.
         loss_graph_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
-        if not os.path.exists(FLAGS.train_dir):
-            os.makedirs(FLAGS.train_dir)
+        if not tf.gfile.Exists(FLAGS.train_dir):
+            tf.gfile.MkDir(FLAGS.train_dir)
 
         # This is the training loop.
         avg_step_time, loss = 0.0, 0.0
@@ -154,7 +156,7 @@ def train(FLAGS):
 
 
 def save_loss_and_time(filename, loss, step_time):
-    _file = open(filename, mode='a')
+    _file = tf.gfile.Open(filename, mode='a')
     _file.write("%f,%d\n" % (loss, int(round(step_time * 1000))))
     _file.close()
 
@@ -204,7 +206,7 @@ def self_test(FLAGS):
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
         model = seq2seq_model.Seq2SeqModel(10, [(3, 3), (6, 6)], 32, 2,
                                            5.0, 32, 0.3, 0.99)
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
 
         # Fake data set for both the (3, 3) and (6, 6) bucket.
         data_set = ([([1, 1], [2, 2]), ([3, 3], [4]), ([5], [6])],

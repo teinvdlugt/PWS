@@ -24,7 +24,7 @@ import sys
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.platform import gfile
+import pickle
 
 from chatbot.data_utils import opensubtitles_util
 
@@ -71,10 +71,10 @@ def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
       all_lowercase: Boolean; if true, all characters will be made lowercase.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
-    if not gfile.Exists(vocabulary_path):
+    if not tf.gfile.Exists(vocabulary_path):
         print("Creating vocabulary %s from data %s" % (vocabulary_path, data_file))
         vocab = {}
-        with gfile.GFile(data_file, mode="rb") as f:
+        with tf.gfile.Open(data_file, mode="rb") as f:
             counter = 0
             for line in f:
                 counter += 1
@@ -97,7 +97,7 @@ def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
             vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
             if len(vocab_list) > max_vocabulary_size:
                 vocab_list = vocab_list[:max_vocabulary_size - 1]
-            with gfile.GFile(vocabulary_path, mode="wb") as vocab_file:
+            with tf.gfile.Open(vocabulary_path, mode="wb") as vocab_file:
                 for w in vocab_list:
                     vocab_file.write(w + b"\n")
 
@@ -121,9 +121,9 @@ def initialize_vocabulary(vocabulary_path):
     Raises:
       ValueError: if the provided vocabulary_path does not exist.
     """
-    if gfile.Exists(vocabulary_path):
+    if tf.gfile.Exists(vocabulary_path):
         rev_vocab = []
-        with gfile.GFile(vocabulary_path, mode="rb") as f:
+        with tf.gfile.Open(vocabulary_path, mode="rb") as f:
             rev_vocab.extend(f.readlines())
         rev_vocab = [line.rstrip('\n') for line in rev_vocab]
         vocab = dict([(x, y) for (y, x) in enumerate(rev_vocab)])
@@ -183,11 +183,11 @@ def maybe_data_to_token_ids(data_path, target_path, vocabulary_path,
       all_lowercase: Boolean; if true, all text will be converted to lowercase.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
-    if not gfile.Exists(target_path):
+    if not tf.gfile.Exists(target_path):
         print("Tokenizing data in %s" % data_path)
         vocab, _ = initialize_vocabulary(vocabulary_path)
-        with gfile.GFile(data_path, mode="rb") as data_file:
-            with gfile.GFile(target_path, mode="w") as tokens_file:
+        with tf.gfile.Open(data_path, mode="rb") as data_file:
+            with tf.gfile.GFile(target_path, mode="w") as tokens_file:
                 counter = 0
                 for line in data_file:
                     # Remove newline
@@ -215,7 +215,7 @@ def read_data(dialogue_file, buckets, max_lines=None):
         len(output) < _buckets[n][1]; input and output are lists of token-ids.
     """
     data_set = [[] for _ in buckets]
-    with tf.gfile.GFile(dialogue_file, 'r') as f:
+    with tf.gfile.Open(dialogue_file, 'r') as f:
         input_sentence = f.readline()
         output_sentence = f.readline()
         count = 0
@@ -234,6 +234,7 @@ def read_data(dialogue_file, buckets, max_lines=None):
                     data_set[bucket_id].append([input_sentence_ids, output_sentence_ids])
                     break
 
+            # TODO maybe say input_sentence = output_sentence? That doubles the training data
             input_sentence = f.readline()
             output_sentence = f.readline()
     return data_set
@@ -260,7 +261,7 @@ def get_encoded_data(data_dir, vocab_size, tokenizer=None):
     test_ids_path = os.path.join(data_dir, "chars_test_ids%d" % vocab_size)
     vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
 
-    if not (os.path.exists(train_ids_path) and os.path.exists(test_ids_path)):
+    if not (tf.gfile.Exists(train_ids_path) and tf.gfile.Exists(test_ids_path)):
         if vocab_size == 60:
             # I have already put a tokenized version of the dataset online with vocab=60, so better download that
             print("Downloading already vocabularized data files with vocab_size=60")
@@ -301,32 +302,36 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
             (1) (numpy-)array containing the training data in buckets;
             (2) (numpy-)array containing the test data in buckets.
     """
-    train_ids_npsaved_path = os.path.join(data_dir, "chars_train_ids%d_array.npy" % vocab_size)
-    test_ids_npsaved_path = os.path.join(data_dir, "chars_test_ids%d_array.npy" % vocab_size)
+    train_ids_pickle_path = os.path.join(data_dir, "chars_train_ids%d_array.pickle" % vocab_size)
+    test_ids_pickle_path = os.path.join(data_dir, "chars_test_ids%d_array.pickle" % vocab_size)
 
     # Get train data array
-    if read_again or not os.path.exists(train_ids_npsaved_path):
-        print(train_ids_npsaved_path)
+    if read_again or not tf.gfile.Exists(train_ids_pickle_path):
+        print(train_ids_pickle_path)
         train_ids_path, _ = get_encoded_data(data_dir, vocab_size, tokenizer)
         print("Reading training data into buckets, limit: %d" % max_read_train_data)
         train_ids_array = read_data(train_ids_path, buckets, max_read_train_data)
         if save:
-            print("Saving training data arrays to numpy files")
-            np.save(train_ids_npsaved_path, train_ids_array)
+            print("Saving training data arrays to pickle file %s " % train_ids_pickle_path)
+            if tf.gfile.Exists(train_ids_pickle_path):
+                tf.gfile.Remove(train_ids_pickle_path)
+            pickle.dump(train_ids_array, tf.gfile.Open(train_ids_pickle_path, 'w'))
     else:
-        print("Loading training data arrays from numpy files")
-        train_ids_array = np.load(train_ids_npsaved_path)
+        print("Loading training data arrays from pickle file %s " % train_ids_pickle_path)
+        train_ids_array = pickle.load(tf.gfile.Open(train_ids_pickle_path))
 
     # Get test data array
-    if read_again or not os.path.exists(test_ids_npsaved_path):
+    if read_again or not os.path.exists(test_ids_pickle_path):
         _, test_ids_path = get_encoded_data(data_dir, vocab_size, tokenizer)
         print("Reading test data into buckets, limit: %d" % max_read_test_data)
         test_ids_array = read_data(test_ids_path, buckets, max_read_test_data)
         if save:
-            print("Saving test data arrays to numpy files")
-            np.save(test_ids_npsaved_path, test_ids_array)
+            print("Saving test data arrays to pickle file %s" % test_ids_pickle_path)
+            if tf.gfile.Exists(test_ids_pickle_path):
+                tf.gfile.Remove(test_ids_pickle_path)
+            pickle.dump(test_ids_array, tf.gfile.Open(test_ids_pickle_path))
     else:
-        print("Loading test data arrays from numpy files")
-        test_ids_array = np.load(test_ids_npsaved_path)
+        print("Loading test data arrays from pickle file %s" % test_ids_pickle_path)
+        test_ids_array = pickle.load(tf.gfile.Open(test_ids_pickle_path))
 
     return train_ids_array, test_ids_array

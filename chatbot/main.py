@@ -2,14 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+import tensorflow as tf
 
 from chatbot.embedded_chars import chars
-
-# For debugging with Google Cloud ML. It keeps saying no such file or directory to the bucket.
-print("The directory exists: " + str(os.path.exists("gs://pws-storage")))
-
-import tensorflow as tf
 
 tf.app.flags.DEFINE_bool("words", False, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -22,7 +17,7 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
 tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
 tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "./data/", "Data directory")
+tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
 tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogue file used for testing.")

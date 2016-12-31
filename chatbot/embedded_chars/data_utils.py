@@ -263,9 +263,12 @@ def get_encoded_data(data_dir, vocab_size, tokenizer=None):
     if not (os.path.exists(train_ids_path) and os.path.exists(test_ids_path)):
         if vocab_size == 60:
             # I have already put a tokenized version of the dataset online with vocab=60, so better download that
+            print("Downloading already vocabularized data files with vocab_size=60")
             train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_encoded_data(data_dir)
         else:
+            print("Downloading plain text data set")
             train_file, test_file = opensubtitles_util.get_data(data_dir)
+            print("Tokenizing and vocabularizing data sets")
             maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
             maybe_data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
             maybe_data_to_token_ids(test_file, test_ids_path, vocab_path, tokenizer)
@@ -305,20 +308,25 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
     if read_again or not os.path.exists(train_ids_npsaved_path):
         print(train_ids_npsaved_path)
         train_ids_path, _ = get_encoded_data(data_dir, vocab_size, tokenizer)
+        print("Reading training data into buckets, limit: %d" % max_read_train_data)
         train_ids_array = read_data(train_ids_path, buckets, max_read_train_data)
         if save:
+            print("Saving training data arrays to numpy files")
             np.save(train_ids_npsaved_path, train_ids_array)
     else:
-        print("hi2")
+        print("Loading training data arrays from numpy files")
         train_ids_array = np.load(train_ids_npsaved_path)
 
     # Get test data array
     if read_again or not os.path.exists(test_ids_npsaved_path):
         _, test_ids_path = get_encoded_data(data_dir, vocab_size, tokenizer)
+        print("Reading test data into buckets, limit: %d" % max_read_test_data)
         test_ids_array = read_data(test_ids_path, buckets, max_read_test_data)
         if save:
+            print("Saving test data arrays to numpy files")
             np.save(test_ids_npsaved_path, test_ids_array)
     else:
+        print("Loading test data arrays from numpy files")
         test_ids_array = np.load(test_ids_npsaved_path)
 
     return train_ids_array, test_ids_array

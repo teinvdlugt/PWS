@@ -22,8 +22,8 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
 tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
 tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "PWS/data/os", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "PWS/data/checkpoints-chars", "Directory to store the training checkpoints.")
+tf.app.flags.DEFINE_string("data_dir", "./data/", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
 tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogue file used for testing.")
 tf.app.flags.DEFINE_integer("max_read_train_data", 0,

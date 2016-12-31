@@ -78,13 +78,9 @@ def train(FLAGS):
         print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, False, FLAGS)
 
-        # Read data into buckets and compute their sizes.
-        print("Reading development and training data (limit: %d)."
-              % FLAGS.max_read_train_data)
+        # Compute the sizes of the buckets.
         train_bucket_sizes = [len(train_data[b]) for b in xrange(len(_buckets))]
         train_total_size = float(sum(train_bucket_sizes))
-
-        print("Data read.")
 
         # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
         # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to

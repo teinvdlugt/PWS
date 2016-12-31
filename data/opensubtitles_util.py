@@ -15,7 +15,7 @@ zipped_tokenized_file = "OSDataset60M60vCh.tar.gz"
 def maybe_download(directory, filename, url):
     if not os.path.exists(directory):
         print("Creating directory %s" % directory)
-        os.mkdir(directory)
+        os.makedirs(directory)
     file_path = os.path.join(directory, filename)
     if not os.path.exists(file_path):
         print("Downloading %s to %s..." % (url, file_path))

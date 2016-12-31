@@ -2,6 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
+from .embedded_chars import chars
+
+# For debugging with Google Cloud ML. It keeps saying no such file or directory to the bucket.
+print("The directory exists: " + str(os.path.exists("gs://pws-storage")))
+
 import tensorflow as tf
 
 tf.app.flags.DEFINE_bool("words", False, "True when using the word-based model, False when using chars")
@@ -39,7 +46,6 @@ FLAGS = tf.app.flags.FLAGS
 
 def main(_):
     if not FLAGS.words:
-        from .embedded_chars import chars
         chars.main(FLAGS)
 
 

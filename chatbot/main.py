@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import os
 
-from .embedded_chars import chars
+from chatbot.embedded_chars import chars
 
 # For debugging with Google Cloud ML. It keeps saying no such file or directory to the bucket.
 print("The directory exists: " + str(os.path.exists("gs://pws-storage")))

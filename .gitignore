@@ -1,6 +1,6 @@
 /ignored/
 /.idea/
-/word/data/
+/chatbot/word/data/
 *.pyc
 /data/os
 /data/os_old

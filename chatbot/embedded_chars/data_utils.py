@@ -26,7 +26,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
-from ..data import opensubtitles_util
+from chatbot.data_utils import opensubtitles_util
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = b"#"

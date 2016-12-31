@@ -262,7 +262,7 @@ def get_encoded_data(data_dir, vocab_size, tokenizer=None):
     vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
 
     if not (tf.gfile.Exists(train_ids_path) and tf.gfile.Exists(test_ids_path)):
-        if vocab_size == 60:
+        if False:  # vocab_size == 60:  # Because uploading the plain text files to GCS bucket is faster
             # I have already put a tokenized version of the dataset online with vocab=60, so better download that
             print("Downloading already vocabularized data files with vocab_size=60")
             train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_encoded_data(data_dir)

@@ -32,7 +32,7 @@ tf.app.flags.DEFINE_integer("max_training_steps", 5000,
 tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
                                                    "put into buckets, to disk using np.save")
 tf.app.flags.DEFINE_boolean("decode", False,
-                            "Set to True for interactive decoding.")
+                            "Set to True for interactive decoding (in stead of training).")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 tf.app.flags.DEFINE_boolean("use_fp16", False,

@@ -305,8 +305,6 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
     train_ids_pickle_path = os.path.join(data_dir, "chars_train_ids%d_array" % vocab_size)
     test_ids_pickle_path = os.path.join(data_dir, "chars_test_ids%d_array" % vocab_size)
 
-    from tensorflow.python.lib.io.file_io import FileIO
-
     # Get train data array
     if read_again or not tf.gfile.Exists(train_ids_pickle_path):
         print(train_ids_pickle_path)

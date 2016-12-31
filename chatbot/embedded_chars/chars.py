@@ -71,7 +71,8 @@ def train(FLAGS):
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
     train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.data_dir, FLAGS.vocab_size, _buckets,
-                                                             FLAGS.max_read_train_data, FLAGS.max_read_test_data)
+                                                             FLAGS.max_read_train_data, FLAGS.max_read_test_data,
+                                                             save=FLAGS.save_pickles)
 
     with tf.Session() as sess:
         # Create model.

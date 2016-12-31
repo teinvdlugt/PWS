@@ -302,8 +302,10 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
             (1) (numpy-)array containing the training data in buckets;
             (2) (numpy-)array containing the test data in buckets.
     """
-    train_ids_pickle_path = os.path.join(data_dir, "chars_train_ids%d_array.pickle" % vocab_size)
-    test_ids_pickle_path = os.path.join(data_dir, "chars_test_ids%d_array.pickle" % vocab_size)
+    train_ids_pickle_path = os.path.join(data_dir, "chars_train_ids%d_array" % vocab_size)
+    test_ids_pickle_path = os.path.join(data_dir, "chars_test_ids%d_array" % vocab_size)
+
+    from tensorflow.python.lib.io.file_io import FileIO
 
     # Get train data array
     if read_again or not tf.gfile.Exists(train_ids_pickle_path):
@@ -315,10 +317,15 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
             print("Saving training data arrays to pickle file %s " % train_ids_pickle_path)
             if tf.gfile.Exists(train_ids_pickle_path):
                 tf.gfile.Remove(train_ids_pickle_path)
-            pickle.dump(train_ids_array, tf.gfile.Open(train_ids_pickle_path, 'w'))
+            # pickle.dump(train_ids_array, tf.gfile.Open(train_ids_pickle_path, 'w'))
+            np.save(tf.gfile.Open(train_ids_pickle_path, 'w'), train_ids_array)
     else:
         print("Loading training data arrays from pickle file %s " % train_ids_pickle_path)
-        train_ids_array = pickle.load(tf.gfile.Open(train_ids_pickle_path))
+        train_ids_array = np.load(train_ids_pickle_path)
+        # I tried using np.load(tf.gfile.Open(train_ids_pickle_path)) for GCS bucket compatibility.
+        # However, then numpy throws an error. So better use this locally only and not with Cloud ML.
+        # When using Cloud ML, set --save to false.
+        # Same for the test_ids_pickle_path, below.
 
     # Get test data array
     if read_again or not os.path.exists(test_ids_pickle_path):
@@ -329,9 +336,10 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
             print("Saving test data arrays to pickle file %s" % test_ids_pickle_path)
             if tf.gfile.Exists(test_ids_pickle_path):
                 tf.gfile.Remove(test_ids_pickle_path)
-            pickle.dump(test_ids_array, tf.gfile.Open(test_ids_pickle_path))
+            # pickle.dump(test_ids_array, tf.gfile.Open(test_ids_pickle_path, 'w'))
+            np.save(tf.gfile.Open(test_ids_pickle_path, 'w'), test_ids_array)
     else:
         print("Loading test data arrays from pickle file %s" % test_ids_pickle_path)
-        test_ids_array = pickle.load(tf.gfile.Open(test_ids_pickle_path))
+        test_ids_array = np.load(test_ids_pickle_path)
 
     return train_ids_array, test_ids_array

@@ -29,6 +29,8 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_integer("max_training_steps", 5000,
                             "Amount of training steps to do when executing the TF application")
+tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
+                                                   "put into buckets, to disk using np.save")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,

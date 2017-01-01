@@ -57,7 +57,7 @@ def create_model(session, forward_only, FLAGS):
     if not tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.MkDir(FLAGS.train_dir)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-    if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+    if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
@@ -157,7 +157,7 @@ def train(FLAGS):
 
 
 def save_loss_and_time(filename, loss, step_time):
-    _file = tf.gfile.Open(filename, mode='a')
+    _file = tf.gfile.Open(filename, mode='w')
     _file.write("%f,%d\n" % (loss, int(round(step_time * 1000))))
     _file.close()
 

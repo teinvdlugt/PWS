@@ -31,6 +31,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.lib.io import file_io
 
 from . import data_utils
 from . import seq2seq_model
@@ -92,9 +93,10 @@ def train(FLAGS):
                                for i in xrange(len(train_bucket_sizes))]
 
         # File to document losses.
-        loss_graph_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
+        loss_csv_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
         if not tf.gfile.Exists(FLAGS.train_dir):
             tf.gfile.MkDir(FLAGS.train_dir)
+        loss_csv_string = ""
 
         # This is the training loop.
         avg_step_time, loss = 0.0, 0.0
@@ -120,7 +122,8 @@ def train(FLAGS):
             loss += step_loss / FLAGS.steps_per_checkpoint
             current_step += 1
 
-            save_loss_and_time(loss_graph_file, step_loss, step_time)
+            # This string will later be put into loss_csv_file
+            loss_csv_string += "%f,%d\n" % (step_loss, int(round(step_time * 1000)))
 
             # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
@@ -134,13 +137,14 @@ def train(FLAGS):
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
                     sess.run(model.learning_rate_decay_op)
                     print("Learning rate decayed.")
-
                 previous_losses.append(loss)
+
                 # Save checkpoint and zero timer and loss.
                 print("Saving checkpoint...")
                 checkpoint_path = os.path.join(FLAGS.train_dir, "chatbot.ckpt")
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
                 avg_step_time, loss = 0.0, 0.0
+
                 # Run evals on development set and print their perplexity.
                 for bucket_id in xrange(len(_buckets)):
                     if len(test_data[bucket_id]) == 0:
@@ -153,13 +157,14 @@ def train(FLAGS):
                     eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
                         "inf")
                     print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
-                sys.stdout.flush()
 
-
-def save_loss_and_time(filename, loss, step_time):
-    _file = tf.gfile.Open(filename, mode='w')
-    _file.write("%f,%d\n" % (loss, int(round(step_time * 1000))))
-    _file.close()
+                # Save the loss_csv_file (tf.gfile.Open(filename, 'a') lead to Cloud ML
+                # crashing, so manually append the new contents to the file.)
+                if tf.gfile.Exists(loss_csv_file):
+                    file_str = file_io.read_file_to_string(loss_csv_file)
+                else:
+                    file_str = ""
+                file_io.write_string_to_file(loss_csv_file, file_str + loss_csv_string)
 
 
 def decode(FLAGS):

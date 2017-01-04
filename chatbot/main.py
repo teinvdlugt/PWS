@@ -36,6 +36,14 @@ from tensorflow.python.lib.io import file_io
 from . import data_utils
 from . import seq2seq_model
 
+# Let's set some default hyperparameter values for char- and word-chatbot respectively.
+# These will be set in main(), if the FLAGS values are equal to -1.
+word_default_vocab_size = 2500
+char_default_vocab_size = 60
+word_default_num_samples = 512
+char_default_num_samples = 0
+
+# TensorFlow flags: you can set the values using command line parameters.
 tf.app.flags.DEFINE_bool("words", False, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.85,
@@ -46,8 +54,8 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
-tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")  # TODO use 0 for default values
-tf.app.flags.DEFINE_boolean("num_samples", 0, "Number of samples for the sampled softmax (0: no sampled softmax)")
+tf.app.flags.DEFINE_integer("vocab_size", -1, "Vocabulary size.")  # TODO use 0 for default values
+tf.app.flags.DEFINE_boolean("num_samples", -1, "Number of samples for the sampled softmax (0: no sampled softmax)")
 tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
@@ -70,7 +78,6 @@ tf.app.flags.DEFINE_boolean("use_fp16", False,
                             "Train using fp16 instead of fp32.")
 
 FLAGS = tf.app.flags.FLAGS
-
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
@@ -275,6 +282,14 @@ def self_test():
 
 
 def main(_):
+    # Set word- and char-specific defaults.
+    words = FLAGS.words
+    if FLAGS.vocab_size == -1:
+        FLAGS.__setattr__("vocab_size", word_default_vocab_size if words else char_default_vocab_size)
+    if FLAGS.num_samples == -1:
+        FLAGS.__setattr__("num_samples", word_default_num_samples if words else char_default_num_samples)
+
+    # Start task according to flags.
     if FLAGS.self_test:
         self_test()
     elif FLAGS.decode:

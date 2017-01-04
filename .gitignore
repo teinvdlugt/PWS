@@ -1,10 +1,4 @@
-/ignored/
-/.idea/
-/chatbot/word/data/
+ignored/
+.idea/
+data/
 *.pyc
-/data/os
-/data/os_old
-/data/subscene
-/data/first_dataset
-/data/checkpoints-chars
-/data/checkpoints-chars-archive

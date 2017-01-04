@@ -38,12 +38,17 @@ from . import seq2seq_model
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(10, 40), (30, 100), (60, 100), (100, 200)]
+_buckets_chars = [(10, 40), (30, 100), (60, 100), (100, 200)]
+_buckets_words = [(5, 10), (10, 15), (20, 25), (40, 50)]
 
 
 def create_model(session, forward_only, FLAGS):
     """Create seq2seq model and initialize or load parameters in session."""
+    # Determine some parameters
+    _buckets = _buckets_words if FLAGS.words else _buckets_chars
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+
+    # Create Seq2SeqModel object
     model = seq2seq_model.Seq2SeqModel(
         FLAGS.vocab_size,
         _buckets,
@@ -53,6 +58,7 @@ def create_model(session, forward_only, FLAGS):
         FLAGS.batch_size,
         FLAGS.learning_rate,
         FLAGS.learning_rate_decay_factor,
+        num_samples=FLAGS.num_samples,
         forward_only=forward_only,
         dtype=dtype)
     if not tf.gfile.Exists(FLAGS.train_dir):
@@ -69,11 +75,14 @@ def create_model(session, forward_only, FLAGS):
 
 def train(FLAGS):
     """Train the chatbot."""
+    # Decide which buckets to use
+    _buckets = _buckets_words if FLAGS.words else _buckets_chars
+
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.data_dir, FLAGS.vocab_size, _buckets,
-                                                             FLAGS.max_read_train_data, FLAGS.max_read_test_data,
-                                                             save=FLAGS.save_pickles)
+    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size,
+                                                             _buckets, FLAGS.max_read_train_data,
+                                                             FLAGS.max_read_test_data, save=FLAGS.save_pickles)
 
     with tf.Session() as sess:
         # Create model.
@@ -141,7 +150,8 @@ def train(FLAGS):
 
                 # Save checkpoint and zero timer and loss.
                 print("Saving checkpoint...")
-                checkpoint_path = os.path.join(FLAGS.train_dir, "chatbot.ckpt")
+                checkpoint_file = "chatbot-word.ckpt" if FLAGS.words else "chatbot-char.ckpt"
+                checkpoint_path = os.path.join(FLAGS.train_dir, checkpoint_file)
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
                 avg_step_time, loss = 0.0, 0.0
 
@@ -159,7 +169,7 @@ def train(FLAGS):
                     print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
 
                 # Save the loss_csv_file (tf.gfile.Open(filename, 'a') lead to Cloud ML
-                # crashing, so manually append the new contents to the file.)
+                # crashing, so manually append the new contents to the file.) TODO fix bug
                 if tf.gfile.Exists(loss_csv_file):
                     file_str = file_io.read_file_to_string(loss_csv_file)
                 else:
@@ -174,8 +184,10 @@ def decode(FLAGS):
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab_path = os.path.join(FLAGS.data_dir, "chars_vocab%d" % FLAGS.vocab_size)
-        vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
+        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words, FLAGS.vocab_size)
+
+        # Determine buckets
+        _buckets = _buckets_words if FLAGS.words else _buckets_chars
 
         # Decode from standard input.
         sys.stdout.write("> ")
@@ -183,7 +195,8 @@ def decode(FLAGS):
         sentence = sys.stdin.readline()
         while sentence:
             # Get token-ids for the input sentence.
-            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab)
+            token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,
+                                                         data_utils.basic_word_tokenizer)
             # Which bucket does it belong to?
             bucket_id = min([b for b in xrange(len(_buckets))
                              if _buckets[b][0] > len(token_ids)])

@@ -62,11 +62,11 @@ def get_data(data_dir):
 
 def get_encoded_data(data_dir):
     print("Downloading tokenized data and vocabulary")
-    if not (gfile.Exists(os.path.join(data_dir, "chars_test_ids60")) and
-            gfile.Exists(os.path.join(data_dir, "chars_train_ids60")) and
-            gfile.Exists(os.path.join(data_dir, "chars_vocab60"))):
+    if not (gfile.Exists(os.path.join(data_dir, "test_ids60")) and
+            gfile.Exists(os.path.join(data_dir, "train_ids60")) and
+            gfile.Exists(os.path.join(data_dir, "vocab60"))):
         downloaded_file = maybe_download(data_dir, zipped_tokenized_file, tokenized_dataset_url)
         unzip(downloaded_file, data_dir)
-    return (os.path.join(data_dir, "chars_train_ids60"),
-            os.path.join(data_dir, "chars_test_ids60"),
-            os.path.join(data_dir, "chars_vocab60"))
+    return (os.path.join(data_dir, "train_ids60"),
+            os.path.join(data_dir, "test_ids60"),
+            os.path.join(data_dir, "vocab60"))

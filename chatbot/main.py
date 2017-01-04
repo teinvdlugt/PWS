@@ -16,7 +16,8 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
-tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")
+tf.app.flags.DEFINE_integer("vocab_size", 60, "Vocabulary size.")  # TODO use 0 for default values
+tf.app.flags.DEFINE_boolean("num_samples", 0, "Number of samples for the sampled softmax (0: no sampled softmax)")
 tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
@@ -42,8 +43,7 @@ FLAGS = tf.app.flags.FLAGS
 
 
 def main(_):
-    if not FLAGS.words:
-        chars.main(FLAGS)
+    chars.main(FLAGS)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,6 @@ import sys
 
 import numpy as np
 import tensorflow as tf
-import pickle
 
 from chatbot.data_utils import opensubtitles_util
 
@@ -46,12 +45,32 @@ _DIGIT_RE = re.compile(br"\d")
 
 
 def basic_character_tokenizer(sentence):
-    """Very basic tokenizer: split the sentence into a list of tokens, being characters in this case."""
+    """Split the sentence into individual characters
+
+    Args:
+        sentence: sentence to tokenize. String, plain text.
+    Return:
+        list: Array of tokens.
+    """
     return [c for c in sentence]
 
 
+def basic_word_tokenizer(sentence):
+    """Split the sentence into words.
+
+    Args:
+        sentence: sentence to tokenize. String, plain text.
+    Return:
+        list: Array of tokens.
+    """
+    words = []
+    for space_separated_fragment in sentence.strip().split():
+        words.extend(_WORD_SPLIT.split(space_separated_fragment))
+    return [w for w in words if w]
+
+
 def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
-                            tokenizer=None, all_lowercase=True, normalize_digits=True):
+                            tokenizer, all_lowercase=True, normalize_digits=True):
     """Create vocabulary file (if it does not exist yet) from data file.
 
     Data file is assumed to contain one utterance per line. Each utterance is
@@ -66,8 +85,7 @@ def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
       vocabulary_path: path where the vocabulary will be created.
       data_file: data file that will be used to create vocabulary.
       max_vocabulary_size: limit on the size of the created vocabulary.
-      tokenizer: a function to use to tokenize each data sentence;
-        if None, basic_tokenizer will be used.
+      tokenizer: a function to use to tokenize each data sentence.
       all_lowercase: Boolean; if true, all characters will be made lowercase.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
@@ -85,15 +103,15 @@ def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                     line = line.lower()
 
                 line = tf.compat.as_bytes(line)
-                tokens = tokenizer(line) if tokenizer else basic_character_tokenizer(line)
+                tokens = tokenizer(line)
                 # Remove newline
                 tokens = tokens[:-1]
-                for c in tokens:
-                    char = _DIGIT_RE.sub(b"0", c) if normalize_digits else c
-                    if char in vocab:
-                        vocab[char] += 1
-                    elif char not in _START_VOCAB:
-                        vocab[char] = 1
+                for t in tokens:
+                    token = _DIGIT_RE.sub(b"0", t) if normalize_digits else t
+                    if token in vocab:
+                        vocab[token] += 1
+                    elif token not in _START_VOCAB:
+                        vocab[token] = 1
             vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
             if len(vocab_list) > max_vocabulary_size:
                 vocab_list = vocab_list[:max_vocabulary_size - 1]
@@ -102,14 +120,30 @@ def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                     vocab_file.write(w + b"\n")
 
 
+def get_vocabulary(data_dir, use_words, vocab_size):
+    """Does the same as initialize_vocabulary(), but assembles the path to the
+    vocabulary file first.
+
+    Args:
+        data_dir: The common data directory.
+        use_words: True if using words version, False if using character version
+        vocab_size: Size of the vocabulary (is included in vocab file name)
+    Returns:
+        a pair: the vocabulary (a dictionary mapping string to integers), and
+        the reversed vocabulary (a list, which reverses the vocabulary mapping).
+    """
+    vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
+    return initialize_vocabulary(os.path.join(vocab_dir, "vocab%d" % vocab_size))
+
+
 def initialize_vocabulary(vocabulary_path):
     """Initialize vocabulary from file.
 
     We assume the vocabulary is stored one-item-per-line, so a file:
-      e
-      o
-    will result in a vocabulary {"e": 0, "o": 1}, and this function will
-    also return the reversed-vocabulary ["e", "o"].
+      dog
+      cat
+    will result in a vocabulary {"dog": 0, "cat": 1}, and this function will
+    also return the reversed-vocabulary ["dog", "cat"].
 
     Args:
       vocabulary_path: path to the file containing the vocabulary.
@@ -132,8 +166,8 @@ def initialize_vocabulary(vocabulary_path):
         raise ValueError("Vocabulary file %s not found.", vocabulary_path)
 
 
-def sentence_to_token_ids(sentence, vocabulary,
-                          tokenizer=None, all_lowercase=True, normalize_digits=True):
+def sentence_to_token_ids(sentence, vocabulary, tokenizer,
+                          all_lowercase=True, normalize_digits=True):
     """Convert a string to list of integers representing token-ids.
 
     For example, a sentence "hello" may become tokenized into
@@ -144,8 +178,7 @@ def sentence_to_token_ids(sentence, vocabulary,
       sentence: the sentence in bytes format to convert to token-ids.
         This shouldn't contain a newline at the end.
       vocabulary: a dictionary mapping tokens to integers.
-      tokenizer: a function to use to tokenize each sentence;
-        if None, basic_tokenizer will be used.
+      tokenizer: a function to use to tokenize each sentence.
       all_lowercase: Boolean; if true, sentence will be converted to lowercase first.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
 
@@ -156,18 +189,16 @@ def sentence_to_token_ids(sentence, vocabulary,
     if all_lowercase:
         sentence = sentence.lower()
 
-    if tokenizer:
-        words = tokenizer(sentence)
-    else:
-        words = basic_character_tokenizer(sentence)
+    words = tokenizer(sentence)
+
     if not normalize_digits:
         return [vocabulary.get(w, UNK_ID) for w in words]
     # Normalize digits by 0 before looking words up in the vocabulary.
     return [vocabulary.get(_DIGIT_RE.sub(b"0", w), UNK_ID) for w in words]
 
 
-def maybe_data_to_token_ids(data_path, target_path, vocabulary_path,
-                            tokenizer=None, all_lowercase=True, normalize_digits=True):
+def maybe_data_to_token_ids(data_path, target_path, vocabulary_path, tokenizer,
+                            all_lowercase=True, normalize_digits=True):
     """Tokenize data file and turn into token-ids using given vocabulary file.
 
     This function loads data line-by-line from data_path, calls the above
@@ -178,8 +209,7 @@ def maybe_data_to_token_ids(data_path, target_path, vocabulary_path,
       data_path: path to the data file in one-sentence-per-line format.
       target_path: path where the file with token-ids will be created.
       vocabulary_path: path to the vocabulary file.
-      tokenizer: a function to use to tokenize each sentence;
-        if None, basic_tokenizer will be used.
+      tokenizer: a function to use to tokenize each sentence.
       all_lowercase: Boolean; if true, all text will be converted to lowercase.
       normalize_digits: Boolean; if true, all digits are replaced by 0s.
     """
@@ -201,6 +231,7 @@ def maybe_data_to_token_ids(data_path, target_path, vocabulary_path,
 
 def read_data(dialogue_file, buckets, max_lines=None):
     """Read data from a dialogue file and put it into buckets.
+    Append EOS_ID to each output sentence.
 
     Args:
         dialogue_file: a file containing text converted to token-ids.
@@ -240,7 +271,7 @@ def read_data(dialogue_file, buckets, max_lines=None):
     return data_set
 
 
-def get_encoded_data(data_dir, vocab_size, tokenizer=None):
+def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words):
     """Get the paths to the files containing the training and test data in id-form.
     Make those files, in the case that they are not already available, using the plain text data.
     Download those plain text data files if needed.
@@ -249,23 +280,26 @@ def get_encoded_data(data_dir, vocab_size, tokenizer=None):
     numbers which represent the index of those characters or words in the vocabulary.
 
     Args:
-        data_dir: The directory where the data (plain text and id-form) should be or is stored.
+        data_dir: The directory where the data in PLAIN TEXT should be or are stored.
+        vocab_dir: The directory where the data in ID-FORM and the vocab should be or are stored.
         vocab_size: The maximum size of the vocabulary, used when creating a new vocabulary is necessary.
         tokenizer: The tokenizer to tokenize the plain text, before creating a vocabulary and putting the data
-         into id-form. If None, basic_character_tokenizer is used.
+         into id-form.
+        use_words: Whether to tokenize into words or into characters.
 
     Returns:
         A tuple containing the paths to the 1) encoded training data
     """
-    train_ids_path = os.path.join(data_dir, "chars_train_ids%d" % vocab_size)
-    test_ids_path = os.path.join(data_dir, "chars_test_ids%d" % vocab_size)
-    vocab_path = os.path.join(data_dir, "chars_vocab%d" % vocab_size)
+    train_ids_path = os.path.join(vocab_dir, "train_ids%d" % vocab_size)
+    test_ids_path = os.path.join(vocab_dir, "test_ids%d" % vocab_size)
+    vocab_path = os.path.join(vocab_dir, "vocab%d" % vocab_size)
 
     if not (tf.gfile.Exists(train_ids_path) and tf.gfile.Exists(test_ids_path)):
-        if False:  # vocab_size == 60:  # Because uploading the plain text files to GCS bucket is faster
+        # if not use_words and vocab_size == 60:  # Because uploading the plain text files to GCS bucket is faster
+        if False:
             # I have already put a tokenized version of the dataset online with vocab=60, so better download that
-            print("Downloading already vocabularized data files with vocab_size=60")
-            train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_encoded_data(data_dir)
+            print("Downloading already vocabularized character data files with vocab_size=60")
+            train_ids_path, test_ids_path, vocab_path = opensubtitles_util.get_encoded_data(vocab_dir)
         else:
             print("Downloading plain text data set")
             train_file, test_file = opensubtitles_util.get_data(data_dir)
@@ -277,11 +311,12 @@ def get_encoded_data(data_dir, vocab_size, tokenizer=None):
     return train_ids_path, test_ids_path
 
 
-def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, max_read_test_data=0,
+def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_train_data=0, max_read_test_data=0,
                           read_again=False, save=True, tokenizer=None):
     """From the dialogue files, create vocabularies and tokenize data in data_dir.
 
     Args:
+        use_words: True if tokenizing into words, False if tokenizing into characters.
         data_dir: directory in which the data and vocab will be stored.
         buckets: an array containing the sizes of the buckets, in which to put the data
         max_read_train_data: maximum amount of lines of training data to be read into buckets,
@@ -293,22 +328,35 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
         read_again: Whether to read the data into buckets again (True) or to load from an np.save file,
          if available
         save: True if you want to save the read-again data and thereby replace the old np.save file
-        vocab_size: maximum size of the vocab to create and use.
+        vocab_size: maximum size of the vocab to create and/or use.
         tokenizer: a function to use to tokenize each data sentence;
-            if None, basic_tokenizer will be used.
+            if None, tokenizer will be determined by use_words parameter.
 
     Returns:
         A tuple of 2 elements:
             (1) (numpy-)array containing the training data in buckets;
             (2) (numpy-)array containing the test data in buckets.
     """
-    train_ids_pickle_path = os.path.join(data_dir, "chars_train_ids%d_array" % vocab_size)
-    test_ids_pickle_path = os.path.join(data_dir, "chars_test_ids%d_array" % vocab_size)
+    # Define tokenizer
+    if tokenizer is None:
+        tokenizer = basic_word_tokenizer if use_words else basic_character_tokenizer
+
+    # The directory to put in the files which are specifically for words or chars.
+    vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
+
+    if not tf.gfile.Exists(data_dir):
+        tf.gfile.MkDir(data_dir)
+    if not tf.gfile.Exists(vocab_dir):
+        tf.gfile.MkDir(vocab_dir)
+
+    # Paths to the files containing the numpy arrays of the training and test data, in buckets.
+    train_ids_pickle_path = os.path.join(vocab_dir, "train_ids%d_array" % vocab_size)
+    test_ids_pickle_path = os.path.join(vocab_dir, "test_ids%d_array" % vocab_size)
 
     # Get train data array
     if read_again or not tf.gfile.Exists(train_ids_pickle_path):
         print(train_ids_pickle_path)
-        train_ids_path, _ = get_encoded_data(data_dir, vocab_size, tokenizer)
+        train_ids_path, _ = get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words)
         print("Reading training data into buckets, limit: %d" % max_read_train_data)
         train_ids_array = read_data(train_ids_path, buckets, max_read_train_data)
         if save:
@@ -327,7 +375,7 @@ def prepare_dialogue_data(data_dir, vocab_size, buckets, max_read_train_data=0, 
 
     # Get test data array
     if read_again or not os.path.exists(test_ids_pickle_path):
-        _, test_ids_path = get_encoded_data(data_dir, vocab_size, tokenizer)
+        _, test_ids_path = get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words)
         print("Reading test data into buckets, limit: %d" % max_read_test_data)
         test_ids_array = read_data(test_ids_path, buckets, max_read_test_data)
         if save:

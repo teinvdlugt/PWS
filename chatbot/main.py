@@ -211,13 +211,8 @@ def train():
                         "inf")
                     print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
 
-                # Save the loss_csv_file (tf.gfile.Open(filename, 'a') lead to Cloud ML
-                # crashing, so manually append the new contents to the file.) TODO fix bug
-                if tf.gfile.Exists(loss_csv_file):
-                    file_str = file_io.read_file_to_string(loss_csv_file)
-                else:
-                    file_str = ""
-                file_io.write_string_to_file(loss_csv_file, file_str + loss_csv_string)
+                # Save the loss_csv_file (This function automatically appends, doesn't overwrite)
+                file_io.write_string_to_file(loss_csv_file, loss_csv_string)
 
 
 def decode():

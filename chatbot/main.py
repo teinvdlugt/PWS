@@ -44,10 +44,13 @@ word_default_num_samples = 512
 char_default_num_samples = 0
 
 # TensorFlow flags: you can set the values using command line parameters.
-tf.app.flags.DEFINE_bool("words", False, "True when using the word-based model, False when using chars")
+tf.app.flags.DEFINE_boolean("words", False, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.85,
                           "Learning rate decays by this much.")
+tf.app.flags.DEFINE_boolean("learning_rate_force_reset", False,
+                            "Whether to reset the learning rate to the"
+                            "parameter or default value, or to read it from the checkpoint (if available)")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size", 64,
@@ -110,6 +113,8 @@ def create_model(session, forward_only):
     if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
+        if FLAGS.learning_rate_force_reset:
+            session.run(model.learning_rate.assign(FLAGS.learning_rate))
     else:
         print("Creating model with fresh parameters.")
         session.run(tf.global_variables_initializer())

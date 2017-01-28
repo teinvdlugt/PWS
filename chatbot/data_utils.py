@@ -271,7 +271,7 @@ def read_data(dialogue_file, buckets, max_lines=None):
     return data_set
 
 
-def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words):
+def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, word_embeddings):
     """Get the paths to the files containing the training and test data in id-form.
     Make those files, in the case that they are not already available, using the plain text data.
     Download those plain text data files if needed.
@@ -285,7 +285,8 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words):
         vocab_size: The maximum size of the vocabulary, used when creating a new vocabulary is necessary.
         tokenizer: The tokenizer to tokenize the plain text, before creating a vocabulary and putting the data
          into id-form.
-        use_words: Whether to tokenize into words or into characters.
+        word_embeddings: Path to a file containing a word2vec implementation. If not None, will be used
+         to create vocab.
 
     Returns:
         A tuple containing the paths to the 1) encoded training data
@@ -304,7 +305,11 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words):
             print("Downloading plain text data set")
             train_file, test_file = opensubtitles_util.get_data(data_dir)
             print("Tokenizing and vocabularizing data sets")
-            maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
+
+            if word_embeddings:
+                maybe_create_vocab_from_word2vec(vocab_path, vocab_size, word_embeddings)
+            else:
+                maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
             maybe_data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
             maybe_data_to_token_ids(test_file, test_ids_path, vocab_path, tokenizer)
 
@@ -312,7 +317,7 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words):
 
 
 def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_train_data=0, max_read_test_data=0,
-                          read_again=False, save=True, tokenizer=None):
+                          read_again=False, save=True, tokenizer=None, word_embedding=None):
     """From the dialogue files, create vocabularies and tokenize data in data_dir.
 
     Args:
@@ -331,6 +336,8 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
         vocab_size: maximum size of the vocab to create and/or use.
         tokenizer: a function to use to tokenize each data sentence;
             if None, tokenizer will be determined by use_words parameter.
+        word_embedding: path to a file containing a word2vec implementation. The vocab will then be
+         read from that file. If None, the vocab will be constructed as usual from the test data.
 
     Returns:
         A tuple of 2 elements:
@@ -338,12 +345,18 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
             (2) (numpy-)array containing the test data in buckets.
     """
     # Define tokenizer
+    if word_embedding is not None:
+        tokenizer = word2vec_tokenizer
     if tokenizer is None:
         tokenizer = basic_word_tokenizer if use_words else basic_character_tokenizer
 
-    # The directory to put in the files which are specifically for words or chars.
-    vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
+    # The directory to put in the files which depend on the tokenizer and vocab.
+    if word_embedding is not None:
+        vocab_dir = os.path.join(data_dir, "word2vec")
+    else:
+        vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
 
+    # Create directories
     if not tf.gfile.Exists(data_dir):
         tf.gfile.MkDir(data_dir)
     if not tf.gfile.Exists(vocab_dir):
@@ -370,7 +383,7 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
         train_ids_array = np.load(train_ids_pickle_path)
         # I tried using np.load(tf.gfile.Open(train_ids_pickle_path)) for GCS bucket compatibility.
         # However, then numpy throws an error. So better use this locally only and not with Cloud ML.
-        # When using Cloud ML, set --save to false.
+        # When using Cloud ML, set --save_pickles to false (default).
         # Same for the test_ids_pickle_path, below.
 
     # Get test data array
@@ -389,3 +402,22 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
         test_ids_array = np.load(test_ids_pickle_path)
 
     return train_ids_array, test_ids_array
+
+
+def word2vec_tokenizer(sentence):
+    """Tokenizes a sentence to conform the word2vec standards."""
+    # TODO do something
+    pass
+
+
+def maybe_create_vocab_from_word2vec(vocab_path, vocab_size, word2vec_file):
+    if not tf.gfile.Exists(vocab_path):
+        with tf.gfile.Open(word2vec_file) as f:
+            with tf.gfile.Open(vocab_path) as vocab_f:
+                # First line is metadata
+                f.readline()
+
+                # Read vocab from the word2vec file
+                i = 0
+                while i < vocab_size:
+                    vocab_f.write(f.readline().split(" ")[0] + "\n")

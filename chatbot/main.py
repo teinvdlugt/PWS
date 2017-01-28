@@ -32,6 +32,7 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variable_scope
 
 from . import data_utils
 from . import seq2seq_model
@@ -57,12 +58,14 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Originally 1024
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
-tf.app.flags.DEFINE_integer("vocab_size", -1, "Vocabulary size.")  # TODO use 0 for default values
+tf.app.flags.DEFINE_integer("vocab_size", -1, "Vocabulary size.")
 tf.app.flags.DEFINE_boolean("num_samples", -1, "Number of samples for the sampled softmax (0: no sampled softmax)")
 tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
 tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogue file used for testing.")
+tf.app.flags.DEFINE_string("word_embeddings", None, "Path to a word embedding file. "
+                                                    "Set when you want to use pre-trained word embeddings. ")
 tf.app.flags.DEFINE_integer("max_read_train_data", 0,
                             "Limit on the size of training data to read into buckets (0: no limit).")
 tf.app.flags.DEFINE_integer("max_read_test_data", 0,
@@ -116,9 +119,53 @@ def create_model(session, forward_only):
         if FLAGS.learning_rate_force_reset:
             session.run(model.learning_rate.assign(FLAGS.learning_rate))
     else:
+        if FLAGS.decode:
+            input("You sure you want to talk to an untrained chatbot? Press Ctrl-C to stop, Return to continue ")
+            print("Fine.")
+
         print("Creating model with fresh parameters.")
         session.run(tf.global_variables_initializer())
+
+        if FLAGS.word_embeddings is not None:
+            print("Reading the word embeddings from the word2vec file")
+            init_word_embeddings(session)
     return model
+
+
+def init_word_embeddings(session):
+    """Replace the random initialized word-embedding arrays in session with word2vec embeddings
+    and make them non-trainable"""
+    # Create word embedding array from word2vec file
+    vocab_size = FLAGS.vocab_size
+    word2vec_file = FLAGS.word_embeddings
+    embeddings = []
+    with tf.gfile.Open(word2vec_file) as f:
+        # First line in word2vec file is metadata
+        f.readline()
+
+        i = 0
+        while i < vocab_size:
+            embeddings.append(f.readline().split(" ")[1:])
+            i += 1
+
+    # Eliminate the random word embeddings and introduce word2vec to the realm of variable scopes.
+    # The victims will be:
+    # "embedding_attention_seq2seq/RNN/EmbeddingWrapper/embedding"
+    # "embedding_attention_seq2seq/embedding_attention_decoder/embedding"
+    np_embeddings = np.asarray(embeddings)
+    with variable_scope.variable_scope("embedding_attention_seq2seq/RNN/EmbeddingWrapper", reuse=True) as scope:
+        embedding = variable_scope.get_variable("embedding")
+        session.run(embedding.assign(np_embeddings))
+
+        # The new monarchs will be conservative of mind
+        trainable_variables = tf.get_collection_ref(tf.GraphKeys.TRAINABLE_VARIABLES)
+        trainable_variables.remove(embedding)
+    with variable_scope.variable_scope("embedding_attention_seq2seq/embedding_attention_decoder", reuse=True) as scope:
+        embedding = variable_scope.get_variable("embedding")
+        session.run(embedding.assign(np_embeddings))
+
+        trainable_variables = tf.get_collection_ref(tf.GraphKeys.TRAINABLE_VARIABLES)
+        trainable_variables.remove(embedding)
 
 
 def train():
@@ -126,16 +173,16 @@ def train():
     # Decide which buckets to use
     _buckets = _buckets_words if FLAGS.words else _buckets_chars
 
-    # Prepare dialogue data.
-    print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size,
-                                                             _buckets, FLAGS.max_read_train_data,
-                                                             FLAGS.max_read_test_data, save=FLAGS.save_pickles)
-
     with tf.Session() as sess:
         # Create model.
         print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, False)
+
+        # Prepare dialogue data.
+        print("Preparing dialogue data in %s" % FLAGS.data_dir)
+        train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size,
+                                                                 _buckets, FLAGS.max_read_train_data,
+                                                                 FLAGS.max_read_test_data, save=FLAGS.save_pickles)
 
         # Compute the sizes of the buckets.
         train_bucket_sizes = [len(train_data[b]) for b in xrange(len(_buckets))]
@@ -288,6 +335,35 @@ def main(_):
         FLAGS.__setattr__("vocab_size", word_default_vocab_size if words else char_default_vocab_size)
     if FLAGS.num_samples == -1:
         FLAGS.__setattr__("num_samples", word_default_num_samples if words else char_default_num_samples)
+
+    # Check compatibility with word2vec file
+    if FLAGS.word_embeddings:
+        # For now, assume the embedding size is 300. If variable, reprogram.
+        print("Setting LSTM size to 300 to conform to the word2vec file")
+        FLAGS.__setattr__("size", 300)
+
+    # The names of the embeddings are:
+    # "embedding_attention_seq2seq/RNN/EmbeddingWrapper/embedding"
+    # "embedding_attention_seq2seq/embedding_attention_decoder/embedding"
+
+    # FLAGS.__setattr__("train_dir", "/tmp/train")
+    # session = tf.Session()
+    # model = create_model(session, True)
+    # with variable_scope.variable_scope("embedding_attention_seq2seq/RNN/EmbeddingWrapper", reuse=True) as scope:
+    #     embedding = variable_scope.get_variable("embedding")
+    #     print(embedding)
+    #     array = embedding.eval(session)
+    #     print(array)
+    #     new_array = np.zeros((array.shape[0], array.shape[1]))
+    #     session.run(embedding.assign(new_array))
+    #     print(embedding.eval(session))
+    #     print(tf.trainable_variables())
+    #     array = tf.get_collection_ref(tf.GraphKeys.TRAINABLE_VARIABLES)
+    #     print([var.name for var in array])
+    #     array.remove(embedding)
+    #     print([var.name for var in tf.trainable_variables()])
+    #
+    # exit(0)
 
     # Start task according to flags.
     if FLAGS.self_test:

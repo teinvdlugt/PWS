@@ -122,19 +122,20 @@ def maybe_create_vocabulary(vocabulary_path, data_file, max_vocabulary_size,
                     vocab_file.write(w + b"\n")
 
 
-def get_vocabulary(data_dir, use_words, vocab_size):
+def get_vocabulary(data_dir, use_words, use_word2vec, vocab_size):
     """Does the same as initialize_vocabulary(), but assembles the path to the
     vocabulary file first.
 
     Args:
         data_dir: The common data directory.
         use_words: True if using words version, False if using character version
+        use_word2vec: True if using word2vec, untrainable embeddings.
         vocab_size: Size of the vocabulary (is included in vocab file name)
     Returns:
         a pair: the vocabulary (a dictionary mapping string to integers), and
         the reversed vocabulary (a list, which reverses the vocabulary mapping).
     """
-    vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
+    vocab_dir = os.path.join(data_dir, "word2vec" if use_word2vec else ("word" if use_words else "char"))
     return initialize_vocabulary(os.path.join(vocab_dir, "vocab%d" % vocab_size))
 
 

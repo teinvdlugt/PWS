@@ -276,7 +276,8 @@ def decode():
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words, FLAGS.vocab_size)
+        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words,
+                                                     FLAGS.word_embeddings, FLAGS.vocab_size)
 
         # Determine buckets
         _buckets = _buckets_words if FLAGS.words else _buckets_chars
@@ -304,7 +305,8 @@ def decode():
             if data_utils.EOS_ID in outputs:
                 outputs = outputs[:outputs.index(data_utils.EOS_ID)]
             # Print out the network's response to the input.
-            print("".join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
+            join = " " if FLAGS.words else ""
+            print(join.join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
             print("> ", end="")
             sys.stdout.flush()
             sentence = sys.stdin.readline()

@@ -33,8 +33,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
 
-from . import data_utils
-from . import seq2seq_model
+from flask import Flask, render_template
+
+#from . import data_utils
+#from . import seq2seq_model
+
+# Flask web interface
+web_app = Flask(__name__)
 
 # Let's set some default hyperparameter values for char- and word-chatbot respectively.
 # These will be set in main(), if the FLAGS values are equal to -1.
@@ -281,6 +286,11 @@ def self_test():
                        bucket_id, False)
 
 
+@web_app.route('/')
+def index():
+    return render_template('chatbot.html')
+
+
 def main(_):
     # Set word- and char-specific defaults.
     words = FLAGS.words
@@ -299,4 +309,5 @@ def main(_):
 
 
 if __name__ == "__main__":
-    tf.app.run()
+    #tf.app.run()
+    web_app.run(debug=True)

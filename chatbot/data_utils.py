@@ -33,6 +33,8 @@ _GO = b">"
 _EOS = b"<"
 _UNK = b"~"
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
+# Will be switched to in main.main(), when --words is set:
+START_VOCAB_WORD = ["_PAD", "_GO", "_EOS", "_UNK"]
 
 PAD_ID = 0
 GO_ID = 1
@@ -189,12 +191,18 @@ def sentence_to_token_ids(sentence, vocabulary, tokenizer,
     if all_lowercase:
         sentence = sentence.lower()
 
-    words = tokenizer(sentence)
+    tokens = tokenizer(sentence)
 
-    if not normalize_digits:
-        return [vocabulary.get(w, UNK_ID) for w in words]
-    # Normalize digits by 0 before looking words up in the vocabulary.
-    return [vocabulary.get(_DIGIT_RE.sub(b"0", w), UNK_ID) for w in words]
+    result = []
+    for t in tokens:
+        if normalize_digits:
+            t = _DIGIT_RE.sub(b"0", t)
+        id = vocabulary.get(t, UNK_ID)
+        # Try uncapitalized version
+        if id == UNK_ID and not all_lowercase:
+            id = vocabulary.get(t.lower(), UNK_ID)
+        result.append(id)
+    return result
 
 
 def maybe_data_to_token_ids(data_path, target_path, vocabulary_path, tokenizer,
@@ -306,10 +314,7 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, word_embeddings
             train_file, test_file = opensubtitles_util.get_data(data_dir)
             print("Tokenizing and vocabularizing data sets")
 
-            if word_embeddings:
-                maybe_create_vocab_from_word2vec(vocab_path, vocab_size, word_embeddings)
-            else:
-                maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
+            maybe_create_vocabulary(vocab_path, test_file, vocab_size, tokenizer)
             maybe_data_to_token_ids(train_file, train_ids_path, vocab_path, tokenizer)
             maybe_data_to_token_ids(test_file, test_ids_path, vocab_path, tokenizer)
 
@@ -317,7 +322,7 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, word_embeddings
 
 
 def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_train_data=0, max_read_test_data=0,
-                          read_again=False, save=True, tokenizer=None, word_embedding=None):
+                          read_again=False, save=True, tokenizer=None):
     """From the dialogue files, create vocabularies and tokenize data in data_dir.
 
     Args:
@@ -345,16 +350,11 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
             (2) (numpy-)array containing the test data in buckets.
     """
     # Define tokenizer
-    if word_embedding is not None:
-        tokenizer = word2vec_tokenizer
     if tokenizer is None:
         tokenizer = basic_word_tokenizer if use_words else basic_character_tokenizer
 
     # The directory to put in the files which depend on the tokenizer and vocab.
-    if word_embedding is not None:
-        vocab_dir = os.path.join(data_dir, "word2vec")
-    else:
-        vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
+    vocab_dir = os.path.join(data_dir, "word" if use_words else "char")
 
     # Create directories
     if not tf.gfile.Exists(data_dir):
@@ -402,22 +402,3 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
         test_ids_array = np.load(test_ids_pickle_path)
 
     return train_ids_array, test_ids_array
-
-
-def word2vec_tokenizer(sentence):
-    """Tokenizes a sentence to conform the word2vec standards."""
-    # TODO do something
-    pass
-
-
-def maybe_create_vocab_from_word2vec(vocab_path, vocab_size, word2vec_file):
-    if not tf.gfile.Exists(vocab_path):
-        with tf.gfile.Open(word2vec_file) as f:
-            with tf.gfile.Open(vocab_path) as vocab_f:
-                # First line is metadata
-                f.readline()
-
-                # Read vocab from the word2vec file
-                i = 0
-                while i < vocab_size:
-                    vocab_f.write(f.readline().split(" ")[0] + "\n")

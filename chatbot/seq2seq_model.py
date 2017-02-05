@@ -27,6 +27,16 @@ import tensorflow as tf
 from . import data_utils
 
 
+def remove_word_embeddings(tensor_list):
+    result = []
+    word_embedding_names = [u'embedding_attention_seq2seq/embedding_attention_decoder/embedding:0',
+                            u'embedding_attention_seq2seq/RNN/EmbeddingWrapper/embedding:0']
+    for tensor in tensor_list:
+        if tensor.name not in word_embedding_names:
+            result.append(tensor)
+    return result
+
+
 class Seq2SeqModel(object):
     """Sequence-to-sequence model with attention and for multiple buckets.
 
@@ -54,6 +64,7 @@ class Seq2SeqModel(object):
                  use_lstm=False,
                  num_samples=512,
                  forward_only=False,
+                 word_embeddings_non_trainable=False,
                  dtype=tf.float32):
         """Create the model.
 
@@ -75,6 +86,8 @@ class Seq2SeqModel(object):
           use_lstm: if true, we use LSTM cells instead of GRU cells.
           num_samples: number of samples for sampled softmax.
           forward_only: if set, we do not construct the backward pass in the model.
+          word_embeddings_non_trainable: Set to True if you want the word embeddings
+            to not be trained.
           dtype: the data type to use to store internal variables.
         """
         self.vocab_size = vocab_size
@@ -172,6 +185,8 @@ class Seq2SeqModel(object):
 
         # Gradients and SGD update operation for training the model.
         params = tf.trainable_variables()
+        if word_embeddings_non_trainable:
+            params = remove_word_embeddings(params)
         if not forward_only:
             self.gradient_norms = []
             self.updates = []

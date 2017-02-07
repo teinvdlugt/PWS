@@ -278,8 +278,9 @@ def train():
                         "inf")
                     print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
 
-                # Save the loss_csv_file (This function automatically appends, doesn't overwrite)
-                file_io.write_string_to_file(loss_csv_file, loss_csv_string)
+                # Save the loss_csv_file
+                with tf.gfile.Open(loss_csv_file, mode="a") as f:
+                    f.write(loss_csv_string)
 
 
 def decode():

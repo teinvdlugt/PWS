@@ -31,7 +31,6 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variable_scope
 
 from . import data_utils
@@ -192,9 +191,6 @@ def train():
                 save=FLAGS.save_pickles)
             embeddings_file = None
 
-        # TODO REMOVE
-        print(train_data)
-
         # Create model.
         print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, False, embeddings_file)
@@ -221,6 +217,7 @@ def train():
         avg_step_time, loss = 0.0, 0.0
         current_step = 0
         previous_losses = []
+        print("Training begins!")
         while current_step < FLAGS.max_training_steps + 1:
             # Choose a bucket according to data distribution. We pick a random number
             # in [0, 1] and use the corresponding interval in train_buckets_scale.
@@ -234,7 +231,6 @@ def train():
                 train_data, bucket_id)
             _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                          target_weights, bucket_id, False)
-            print("Step %d, loss: %f" % (current_step + 1, step_loss))
 
             step_time = time.time() - start_time
             avg_step_time += step_time / FLAGS.steps_per_checkpoint
@@ -248,9 +244,9 @@ def train():
             if current_step % FLAGS.steps_per_checkpoint == 0:
                 # Print statistics for the previous epoch.
                 perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-                print("global step %d learning rate %.4f step-time %.2f perplexity "
-                      "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-                                avg_step_time, perplexity))
+                print("step %d, global step %d, learning rate %.4f, step-time %.2f, average loss %.4f, "
+                      "perplexity %.2f" % (current_step, model.global_step.eval(), model.learning_rate.eval(),
+                                           avg_step_time, loss, perplexity))
 
                 # Decrease learning rate if no improvement was seen over last 3 times.
                 if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):

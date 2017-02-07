@@ -238,7 +238,7 @@ def maybe_data_to_token_ids(data_path, target_path, vocabulary_path, tokenizer,
                     tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
-def read_data(dialogue_file, buckets, max_lines=None):
+def read_data(dialogue_file, buckets, max_lines=None, start_reading_at=0):
     """Read data from a dialogue file and put it into buckets.
     Append EOS_ID to each output sentence.
 
@@ -247,6 +247,7 @@ def read_data(dialogue_file, buckets, max_lines=None):
         buckets: an array containing the sizes of the buckets, in which to put the data
         max_lines: maximum number of lines to read, all other will be ignored;
             if 0 or None, data files will be read completely (no limit).
+        start_reading_at: Start reading from the file from this line onwards
 
     Returns:
       data_set: a list of length len(_buckets); data_set[n] contains a list of
@@ -256,6 +257,8 @@ def read_data(dialogue_file, buckets, max_lines=None):
     """
     data_set = [[] for _ in buckets]
     with tf.gfile.Open(dialogue_file, 'r') as f:
+        for x in xrange(0, start_reading_at):
+            f.readline()
         input_sentence = f.readline()
         output_sentence = f.readline()
         count = 0
@@ -274,13 +277,12 @@ def read_data(dialogue_file, buckets, max_lines=None):
                     data_set[bucket_id].append([input_sentence_ids, output_sentence_ids])
                     break
 
-            # TODO maybe say input_sentence = output_sentence? That doubles the training data
-            input_sentence = f.readline()
+            input_sentence = output_sentence
             output_sentence = f.readline()
     return data_set
 
 
-def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, word_embeddings):
+def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer):
     """Get the paths to the files containing the training and test data in id-form.
     Make those files, in the case that they are not already available, using the plain text data.
     Download those plain text data files if needed.
@@ -294,8 +296,6 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, word_embeddings
         vocab_size: The maximum size of the vocabulary, used when creating a new vocabulary is necessary.
         tokenizer: The tokenizer to tokenize the plain text, before creating a vocabulary and putting the data
          into id-form.
-        word_embeddings: Path to a file containing a word2vec implementation. If not None, will be used
-         to create vocab.
 
     Returns:
         A tuple containing the paths to the 1) encoded training data
@@ -323,6 +323,7 @@ def get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, word_embeddings
 
 
 def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_train_data=0, max_read_test_data=0,
+                          start_read_train_data=0, start_read_test_data=0,
                           read_again=False, save=True, tokenizer=None):
     """From the dialogue files, create vocabularies and tokenize data in data_dir.
 
@@ -336,14 +337,14 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
         max_read_test_data: maximum amount of lines of test data to be read into buckets,
          if data is going to be put into buckets again (not if the data is already in
          buckets and read from a np.save file)
+        start_read_train_data: Start reading from the training data from this line on
+        start_read_test_data: Start reading from the test data from this line on
         read_again: Whether to read the data into buckets again (True) or to load from an np.save file,
          if available
         save: True if you want to save the read-again data and thereby replace the old np.save file
         vocab_size: maximum size of the vocab to create and/or use.
         tokenizer: a function to use to tokenize each data sentence;
             if None, tokenizer will be determined by use_words parameter.
-        word_embedding: path to a file containing a word2vec implementation. The vocab will then be
-         read from that file. If None, the vocab will be constructed as usual from the test data.
 
     Returns:
         A tuple of 2 elements:
@@ -370,9 +371,9 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
     # Get train data array
     if read_again or not tf.gfile.Exists(train_ids_pickle_path):
         print(train_ids_pickle_path)
-        train_ids_path, _ = get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words)
+        train_ids_path, _ = get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer)
         print("Reading training data into buckets, limit: %d" % max_read_train_data)
-        train_ids_array = read_data(train_ids_path, buckets, max_read_train_data)
+        train_ids_array = read_data(train_ids_path, buckets, max_read_train_data, start_read_train_data)
         if save:
             print("Saving training data arrays to pickle file %s " % train_ids_pickle_path)
             if tf.gfile.Exists(train_ids_pickle_path):
@@ -389,9 +390,9 @@ def prepare_dialogue_data(use_words, data_dir, vocab_size, buckets, max_read_tra
 
     # Get test data array
     if read_again or not os.path.exists(test_ids_pickle_path):
-        _, test_ids_path = get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer, use_words)
+        _, test_ids_path = get_encoded_data(data_dir, vocab_dir, vocab_size, tokenizer)
         print("Reading test data into buckets, limit: %d" % max_read_test_data)
-        test_ids_array = read_data(test_ids_path, buckets, max_read_test_data)
+        test_ids_array = read_data(test_ids_path, buckets, max_read_test_data, start_read_test_data)
         if save:
             print("Saving test data arrays to pickle file %s" % test_ids_pickle_path)
             if tf.gfile.Exists(test_ids_pickle_path):

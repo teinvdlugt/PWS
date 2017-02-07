@@ -69,6 +69,10 @@ tf.app.flags.DEFINE_integer("max_read_train_data", 0,
                             "Limit on the size of training data to read into buckets (0: no limit).")
 tf.app.flags.DEFINE_integer("max_read_test_data", 0,
                             "Limit on the size of test data to read into buckets (0: no limit).")
+tf.app.flags.DEFINE_integer("start_read_train_data", 0,
+                            "Start reading from the training data from this line on.")
+tf.app.flags.DEFINE_integer("start_read_test_data", 0,
+                            "Start reading from the test data from this line on.")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_integer("max_training_steps", 5000,
@@ -169,19 +173,28 @@ def train():
 
     with tf.Session() as sess:
         if FLAGS.word_embeddings:
+            # Get the dialogue data manually.
             vocab_dir = os.path.join(FLAGS.data_dir, "word2vec")
             train_ids = os.path.join(vocab_dir, "train_ids%d" % FLAGS.vocab_size)
             test_ids = os.path.join(vocab_dir, "test_ids%d" % FLAGS.vocab_size)
-            train_data = data_utils.read_data(train_ids, _buckets, FLAGS.max_read_train_data)
-            test_data = data_utils.read_data(test_ids, _buckets, FLAGS.max_read_test_data)
+            train_data = data_utils.read_data(train_ids, _buckets, FLAGS.max_read_train_data,
+                                              FLAGS.start_read_train_data)
+            test_data = data_utils.read_data(test_ids, _buckets, FLAGS.max_read_test_data,
+                                             FLAGS.start_read_test_data)
             embeddings_file = os.path.join(vocab_dir, "vocab%d_embeddings" % FLAGS.vocab_size)
         else:
-            # Prepare dialogue data.
+            # Get dialogue data using the functions in data_utils.py
             print("Preparing dialogue data in %s" % FLAGS.data_dir)
-            train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size,
-                                                                     _buckets, FLAGS.max_read_train_data,
-                                                                     FLAGS.max_read_test_data, save=FLAGS.save_pickles)
+            train_data, test_data = data_utils.prepare_dialogue_data(
+                FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size, _buckets,
+                FLAGS.max_read_train_data, FLAGS.max_read_test_data,
+                FLAGS.start_read_train_data, FLAGS.start_read_test_data,
+                save=FLAGS.save_pickles)
             embeddings_file = None
+
+        # TODO REMOVE
+        print(train_data)
+
         # Create model.
         print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, False, embeddings_file)

@@ -275,7 +275,8 @@ def train():
                     print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
 
                 # Save the loss_csv_file
-                with tf.gfile.Open(loss_csv_file, mode="a") as f:
+                mode = "a" if tf.gfile.Exists(loss_csv_file) else "w"
+                with tf.gfile.Open(loss_csv_file, mode=mode) as f:
                     f.write(loss_csv_string)
 
 

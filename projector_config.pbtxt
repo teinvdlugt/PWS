@@ -1,0 +1,4 @@
+embeddings {
+  tensor_name: "embedding_attention_seq2seq/RNN/EmbeddingWrapper/embedding"
+  metadata_path: "/tmp/train3/vocab.tsv"
+}

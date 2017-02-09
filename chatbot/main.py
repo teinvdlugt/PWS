@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import math
 import os
 import random
@@ -66,6 +67,7 @@ tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogu
 tf.app.flags.DEFINE_boolean("word_embeddings", False, "Whether to use preset word embeddings.")
 tf.app.flags.DEFINE_integer("max_read_train_data", 0,
                             "Limit on the size of training data to read into buckets (0: no limit).")
+tf.app.flags.DEFINE_boolean("read_again", False, "")
 tf.app.flags.DEFINE_integer("max_read_test_data", 0,
                             "Limit on the size of test data to read into buckets (0: no limit).")
 tf.app.flags.DEFINE_integer("start_read_train_data", 0,
@@ -93,10 +95,10 @@ _buckets_chars = [(10, 40), (30, 100), (60, 100), (100, 200)]
 _buckets_words = [(5, 10), (10, 15), (20, 25), (40, 50)]
 
 
-def create_model(session, forward_only, embeddings_file=None):
+def create_model(forward_only, word_embeddings_non_trainable=False):
     """Create seq2seq model and initialize or load parameters in session."""
     # Determine some parameters
-    _buckets = _buckets_words if FLAGS.words else _buckets_chars
+    _buckets = _buckets_words if FLAGS.words else [_buckets_chars[1]]  # TODO undo
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
 
     # Create Seq2SeqModel object
@@ -111,8 +113,12 @@ def create_model(session, forward_only, embeddings_file=None):
         FLAGS.learning_rate_decay_factor,
         num_samples=FLAGS.num_samples,
         forward_only=forward_only,
-        word_embeddings_non_trainable=(embeddings_file is not None),
+        word_embeddings_non_trainable=word_embeddings_non_trainable,
         dtype=dtype)
+    return model
+
+
+def init_model(session, model, embeddings_file=None):
     if not tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.MkDir(FLAGS.train_dir)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
@@ -133,7 +139,6 @@ def create_model(session, forward_only, embeddings_file=None):
         if embeddings_file is not None:
             print("Reading the word embeddings from the word2vec file")
             init_word_embeddings(session, embeddings_file)
-    return model
 
 
 def init_word_embeddings(session, embeddings_file):
@@ -168,116 +173,164 @@ def init_word_embeddings(session, embeddings_file):
 def train():
     """Train the chatbot."""
     # Decide which buckets to use
-    _buckets = _buckets_words if FLAGS.words else _buckets_chars
+    _buckets = _buckets_words if FLAGS.words else [_buckets_chars[1]]  # TODO undo
 
-    with tf.Session() as sess:
-        if FLAGS.word_embeddings:
-            # Get the dialogue data manually.
-            vocab_dir = os.path.join(FLAGS.data_dir, "word2vec")
-            train_ids = os.path.join(vocab_dir, "train_ids%d" % FLAGS.vocab_size)
-            test_ids = os.path.join(vocab_dir, "test_ids%d" % FLAGS.vocab_size)
-            train_data = data_utils.read_data(train_ids, _buckets, FLAGS.max_read_train_data,
-                                              FLAGS.start_read_train_data)
-            test_data = data_utils.read_data(test_ids, _buckets, FLAGS.max_read_test_data,
-                                             FLAGS.start_read_test_data)
-            embeddings_file = os.path.join(vocab_dir, "vocab%d_embeddings" % FLAGS.vocab_size)
-        else:
-            # Get dialogue data using the functions in data_utils.py
-            print("Preparing dialogue data in %s" % FLAGS.data_dir)
-            train_data, test_data = data_utils.prepare_dialogue_data(
-                FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size, _buckets,
-                FLAGS.max_read_train_data, FLAGS.max_read_test_data,
-                FLAGS.start_read_train_data, FLAGS.start_read_test_data,
-                save=FLAGS.save_pickles)
-            embeddings_file = None
+    # For Distributed TensorFlow
+    env = json.loads(os.environ.get('TF_CONFIG', '{}'))
+    cluster_info = env.get('cluster')
+    cluster_spec = tf.train.ClusterSpec(cluster_info)
+    task_info = env.get('task')
+    job_name, task_index = task_info['type'], task_info['index']
 
-        # Create model.
-        print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
-        model = create_model(sess, False, embeddings_file)
+    device_fn = tf.train.replica_device_setter(
+        cluster=cluster_spec,
+        worker_device='/job:%s/task:%d' % (job_name, task_index))
 
-        # Compute the sizes of the buckets.
-        train_bucket_sizes = [len(train_data[b]) for b in xrange(len(_buckets))]
-        train_total_size = float(sum(train_bucket_sizes))
+    print("Start job:%s, index:%d" % (job_name, task_index))
 
-        print(" Bucket sizes: %s\n Total train size: %d" % (str(train_bucket_sizes), train_total_size))
+    server = tf.train.Server(cluster_spec,
+                             job_name=job_name, task_index=task_index)
 
-        # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
-        # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
-        # the size if i-th training bucket, as used later.
-        train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
-                               for i in xrange(len(train_bucket_sizes))]
+    # Start a parameter server node
+    if job_name == 'ps':
+        server.join()
 
-        # File to document losses.
-        loss_csv_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
-        if not tf.gfile.Exists(FLAGS.train_dir):
-            tf.gfile.MkDir(FLAGS.train_dir)
-        loss_csv_string = ""
+    # Start a master/worker node
+    if job_name == 'master' or job_name == 'worker':
+        is_chief = (job_name == 'master')
 
-        # This is the training loop.
-        avg_step_time, loss = 0.0, 0.0
-        current_step = 0
-        previous_losses = []
-        print("Training begins!")
-        while current_step < FLAGS.max_training_steps + 1:
-            # Choose a bucket according to data distribution. We pick a random number
-            # in [0, 1] and use the corresponding interval in train_buckets_scale.
-            random_number_01 = np.random.random_sample()
-            bucket_id = min([i for i in xrange(len(train_buckets_scale))
-                             if train_buckets_scale[i] > random_number_01])
+        with tf.Graph().as_default() as graph:
+            with tf.device(device_fn):
 
-            # Get a batch and make a step.
-            start_time = time.time()
-            encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                train_data, bucket_id)
-            _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                         target_weights, bucket_id, False)
+                # Prepare the data
+                if FLAGS.word_embeddings:
+                    # Get the dialogue data manually.
+                    vocab_dir = os.path.join(FLAGS.data_dir, "word2vec")
+                    train_ids = os.path.join(vocab_dir, "train_ids%d" % FLAGS.vocab_size)
+                    test_ids = os.path.join(vocab_dir, "test_ids%d" % FLAGS.vocab_size)
+                    train_data = data_utils.read_data(train_ids, _buckets, FLAGS.max_read_train_data,
+                                                      FLAGS.start_read_train_data)
+                    test_data = data_utils.read_data(test_ids, _buckets, FLAGS.max_read_test_data,
+                                                     FLAGS.start_read_test_data)
+                    embeddings_file = os.path.join(vocab_dir, "vocab%d_embeddings" % FLAGS.vocab_size)
+                else:
+                    # Get dialogue data using the functions in data_utils.py
+                    print("Preparing dialogue data in %s" % FLAGS.data_dir)
+                    train_data, test_data = data_utils.prepare_dialogue_data(
+                        FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size, _buckets,
+                        FLAGS.max_read_train_data, FLAGS.max_read_test_data,
+                        FLAGS.start_read_train_data, FLAGS.start_read_test_data,
+                        read_again=FLAGS.read_again, save=FLAGS.save_pickles)
+                    embeddings_file = None
 
-            step_time = time.time() - start_time
-            avg_step_time += step_time / FLAGS.steps_per_checkpoint
-            loss += step_loss / FLAGS.steps_per_checkpoint
-            current_step += 1
+                # Create model.
+                print("(%s,%d) Creating %d layers of %d units." % (job_name, task_index, FLAGS.num_layers, FLAGS.size))
+                model = create_model(False, embeddings_file is not None)
 
-            # This string will later be put into loss_csv_file
-            loss_csv_string += "%f,%d\n" % (step_loss, int(round(step_time * 1000)))
+                # Stuff that used to be in create_model
+                if not tf.gfile.Exists(FLAGS.train_dir):
+                    tf.gfile.MkDir(FLAGS.train_dir)
+                init_op = tf.global_variables_initializer()
 
-            # Once in a while, we save checkpoint, print statistics, and run evals.
-            if current_step % FLAGS.steps_per_checkpoint == 0:
-                # Print statistics for the previous epoch.
-                perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-                print("step %d, global step %d, learning rate %.4f, step-time %.2f, average loss %.4f, "
-                      "perplexity %.2f" % (current_step, model.global_step.eval(), model.learning_rate.eval(),
-                                           avg_step_time, loss, perplexity))
+                def init_fn(session):
+                    if embeddings_file is not None:
+                        print("Reading the word embeddings from the word2vec file")
+                        init_word_embeddings(session, embeddings_file)
 
-                # Decrease learning rate if no improvement was seen over last 3 times.
-                if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-                    sess.run(model.learning_rate_decay_op)
-                    print("Learning rate decayed.")
-                previous_losses.append(loss)
+                sv = tf.train.Supervisor(is_chief=is_chief, logdir=FLAGS.train_dir, init_op=init_op, init_fn=init_fn,
+                                         saver=model.saver, summary_op=None,
+                                         global_step=model.global_step, save_model_secs=0)
 
-                # Save checkpoint and zero timer and loss.
-                print("Saving checkpoint...")
-                checkpoint_file = "chatbot-word.ckpt" if FLAGS.words else "chatbot-char.ckpt"
-                checkpoint_path = os.path.join(FLAGS.train_dir, checkpoint_file)
-                model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-                avg_step_time, loss = 0.0, 0.0
+                with sv.managed_session(server.target) as sess:
+                    # Compute the sizes of the buckets.
+                    train_bucket_sizes = [len(train_data[b]) for b in xrange(len(_buckets))]
+                    train_total_size = float(sum(train_bucket_sizes))
 
-                # Run evals on development set and print their perplexity.
-                for bucket_id in xrange(len(_buckets)):
-                    if len(test_data[bucket_id]) == 0:
-                        print("  eval: empty bucket %d" % bucket_id)
-                        continue
-                    encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                        test_data, bucket_id)
-                    _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                                 target_weights, bucket_id, True)
-                    eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
-                        "inf")
-                    print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+                    print(" Bucket sizes: %s\n Total train size: %d" % (str(train_bucket_sizes), train_total_size))
 
-                # Save the loss_csv_file
-                mode = "a" if tf.gfile.Exists(loss_csv_file) else "w"
-                with tf.gfile.Open(loss_csv_file, mode=mode) as f:
-                    f.write(loss_csv_string)
+                    # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
+                    # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
+                    # the size if i-th training bucket, as used later.
+                    train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
+                                           for i in xrange(len(train_bucket_sizes))]
+
+                    # File to document losses.
+                    loss_csv_file = os.path.join(FLAGS.train_dir, "loss_eval.csv")
+                    if not tf.gfile.Exists(FLAGS.train_dir):
+                        tf.gfile.MkDir(FLAGS.train_dir)
+                    loss_csv_string = ""
+
+                    # This is the training loop.
+                    avg_step_time, loss = 0.0, 0.0
+                    current_step = 0
+                    previous_losses = []
+                    print("(%s,%d) Training begins!" % (job_name, task_index))
+                    while model.global_step.eval(sess) < FLAGS.max_training_steps + 1 and not sv.should_stop():
+                        # Choose a bucket according to data distribution. We pick a random number
+                        # in [0, 1] and use the corresponding interval in train_buckets_scale.
+                        random_number_01 = np.random.random_sample()
+                        bucket_id = min([i for i in xrange(len(train_buckets_scale))
+                                         if train_buckets_scale[i] > random_number_01])
+
+                        # Get a batch and make a step.
+                        start_time = time.time()
+                        encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+                            train_data, bucket_id)
+                        _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                                     target_weights, bucket_id, False)
+
+                        step_time = time.time() - start_time
+                        avg_step_time += step_time / FLAGS.steps_per_checkpoint
+                        loss += step_loss / FLAGS.steps_per_checkpoint
+                        current_step += 1
+
+                        # This string will later be put into loss_csv_file
+                        loss_csv_string += "%f,%d\n" % (step_loss, int(round(step_time * 1000)))
+
+                        print("(%s,%d) Global step %d, loss: %.4f, time: %d" % (job_name, task_index,
+                                                                                model.global_step.eval(sess), step_loss,
+                                                                                step_time * 1000))
+
+                        # Once in a while, we save checkpoint, print statistics, and run evals.
+                        if model.global_step.eval(sess) % FLAGS.steps_per_checkpoint == 0 and is_chief:
+                            # Print statistics for the previous epoch.
+                            perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
+                            print("step %d, global step %d, learning rate %.4f, step-time %.2f, average loss %.4f, "
+                                  "perplexity %.2f" % (
+                                      current_step, model.global_step.eval(sess), model.learning_rate.eval(sess),
+                                      avg_step_time, loss, perplexity))
+
+                            # Decrease learning rate if no improvement was seen over last 3 times.
+                            if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+                                sess.run(model.learning_rate_decay_op)
+                                print("Learning rate decayed.")
+                            previous_losses.append(loss)
+
+                            # Save checkpoint and zero timer and loss.
+                            print("Saving checkpoint...")
+                            checkpoint_file = "chatbot-word.ckpt" if FLAGS.words else "chatbot-char.ckpt"
+                            checkpoint_path = os.path.join(FLAGS.train_dir, checkpoint_file)
+                            model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+                            avg_step_time, loss = 0.0, 0.0
+
+                            # # Run evals on development set and print their perplexity.
+                            # for bucket_id in xrange(len(_buckets)):
+                            #     if len(test_data[bucket_id]) == 0:
+                            #         print("  eval: empty bucket %d" % bucket_id)
+                            #         continue
+                            #     encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+                            #         test_data, bucket_id)
+                            #     _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                            #                                  target_weights, bucket_id, True)
+                            #     eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
+                            #         "inf")
+                            #     print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+
+                            # Save the loss_csv_file
+                            mode = "a" if tf.gfile.Exists(loss_csv_file) else "w"
+                            with tf.gfile.Open(loss_csv_file, mode=mode) as f:
+                                f.write(loss_csv_string)
+                sv.stop()
 
 
 def decode():

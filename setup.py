@@ -6,4 +6,4 @@ that you want Cloud ML to upload to the Google servers.
 from setuptools import setup
 
 if __name__ == '__main__':
-    setup(name='chatbot', packages=['chatbot'], install_requires=['numpy', 'tensorflow'])
+    setup(name='chatbot', packages=['chatbot'], install_requires=['numpy', 'tensorflow', 'flask'])

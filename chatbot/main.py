@@ -33,7 +33,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 
 #from . import data_utils
 #from . import seq2seq_model
@@ -78,7 +78,7 @@ tf.app.flags.DEFINE_integer("max_training_steps", 5000,
                             "Amount of training steps to do when executing the TF application")
 tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
                                                    "put into buckets, to disk using np.save")
-tf.app.flags.DEFINE_boolean("decode", False,
+tf.app.flags.DEFINE_boolean("decode", True,
                             "Set to True for interactive decoding (in stead of training).")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
@@ -238,9 +238,10 @@ def decode():
         _buckets = _buckets_words if FLAGS.words else _buckets_chars
 
         # Decode from standard input.
-        sys.stdout.write("> ")
-        sys.stdout.flush()
-        sentence = sys.stdin.readline()
+        #sys.stdout.flush()
+        #sentence = sys.stdin.readline()
+        chat()
+        sentence = chat.message
         while sentence:
             # Get token-ids for the input sentence.
             token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,
@@ -266,6 +267,11 @@ def decode():
             sentence = sys.stdin.readline()
 
 
+# for testing purposes
+def example_decode():
+    return "Success"
+
+
 def self_test():
     """Test the seq2seq model."""
     with tf.Session() as sess:
@@ -289,6 +295,14 @@ def self_test():
 @web_app.route('/')
 def index():
     return render_template('chatbot.html')
+
+
+@web_app.route('/chat', methods=['POST'])
+def chat():
+    chat.message = str(request.form['messageContent'])
+    # just for testing
+    success = example_decode()
+    return jsonify({'status': 'OK', 'answer': success})
 
 
 def main(_):

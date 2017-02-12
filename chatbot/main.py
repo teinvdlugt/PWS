@@ -87,6 +87,7 @@ tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 tf.app.flags.DEFINE_boolean("use_fp16", False,
                             "Train using fp16 instead of fp32.")
+tf.app.flags.DEFINE_boolean("distributed", False, "Run in distributed mode or not")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -126,16 +127,17 @@ def create_model(forward_only):
     return model
 
 
-def init_model(session, model, embeddings_file=None):
+def init_model(session, model):
+    """Load the variables from a checkpoint, or initialize them using tf.global_variables_initializer()"""
+    # If there is a checkpoint, load it
     if not tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.MkDir(FLAGS.train_dir)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
     if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
-        if FLAGS.learning_rate_force_reset:
-            session.run(model.learning_rate.assign(FLAGS.learning_rate))
 
+    # Else initialize the variables
     else:
         if FLAGS.decode:
             input("You sure you want to talk to an untrained chatbot? Press Ctrl-C to stop, Return to continue ")
@@ -144,9 +146,20 @@ def init_model(session, model, embeddings_file=None):
         print("Creating model with fresh parameters.")
         session.run(tf.global_variables_initializer())
 
-        if embeddings_file is not None:
-            print("Reading the word embeddings from the word2vec file")
-            init_word_embeddings(session, embeddings_file)
+
+def after_init(session, model, embeddings_file):
+    """Optionally loads word embeddings from the embeddings file.
+    Resets the learning rate if FLAGS.learning_rate_force_reset is set.
+
+    This function is not included in init_model() because of Distributed TensorFlow.
+    The Supervisor of Distributed TensorFlow does initialization ifself, after which
+    this function is called.
+    """
+    if embeddings_file is not None:
+        print("Reading the word embeddings from the word2vec file")
+        init_word_embeddings(session, embeddings_file)
+    if FLAGS.learning_rate_force_reset:
+        session.run(model.learning_rate.assign(FLAGS.learning_rate))
 
 
 def init_word_embeddings(session, embeddings_file):
@@ -179,10 +192,13 @@ def init_word_embeddings(session, embeddings_file):
 
 
 def calculate_perplexity(loss):
+    """Simply mathematical equation to calculate word perplexity from loss.
+    See this paper for more info on word perplexity: https://arxiv.org/abs/1507.04808"""
     return math.exp(float(loss)) if loss < 300 else float("inf")
 
 
 def train_distributed():
+    """Train model with Distributed TensorFlow."""
     # Distributed stuff learnt from this repo: https://github.com/GoogleCloudPlatform/cloudml-dist-
     # mnist-example/blob/master/trainer/task.py
 
@@ -210,7 +226,7 @@ def train_distributed():
     if job_name == 'master' or job_name == 'worker':
         is_chief = (job_name == 'master')
 
-        with tf.Graph().as_default() as graph:
+        with tf.Graph().as_default() as graph:  # TODO necessary?
             with tf.device(device_fn):
                 # Prepare the data
                 train_data, test_data, embeddings_file = prepare_data()
@@ -226,61 +242,57 @@ def train_distributed():
                         tf.gfile.MkDir(FLAGS.train_dir)
 
                 # TensorBoard summaries
-                test_loss = tf.placeholder(tf.float32, [])
-                test_perplexity = tf.placeholder(tf.float32, [])
-                tf.summary.scalar('Loss_overall', test_loss)
-                tf.summary.scalar('Perplexity_overall', test_perplexity)
-                # Do it for each individual bucket as well
-                bucket_loss_placeholders = []
-                bucket_perplexity_placeholders = []
-                for bucket_id in range(0, len(buckets)):
-                    bucket_loss = tf.placeholder(tf.float32, [])
-                    bucket_perplexity = tf.placeholder(tf.float32, [])
-                    tf.summary.scalar('Loss_bucket%d' % bucket_id, bucket_loss)
-                    tf.summary.scalar('Perplexity_bucket%d' % bucket_id, bucket_perplexity)
-                    bucket_loss_placeholders.append(bucket_loss)
-                    bucket_perplexity_placeholders.append(bucket_perplexity)
-                summary = tf.summary.merge_all()
+                (test_loss, test_perplexity, bucket_loss_placeholders,
+                 bucket_perplexity_placeholders, summary, summary_writer) = create_summary_objects(graph)
 
                 # Create supervisor
                 init_op = tf.global_variables_initializer()
 
-                def init_fn(session):
-                    if embeddings_file is not None:
-                        print("Reading the word embeddings from the word2vec file")
-                        init_word_embeddings(session, embeddings_file)
-
                 # Create Supervisor. Disabling checkpoints and summaries, because we do that manually
                 sv = tf.train.Supervisor(is_chief=is_chief, logdir=FLAGS.train_dir, init_op=init_op,
-                                         init_fn=init_fn, saver=model.saver,
-                                         global_step=model.global_step, save_model_secs=0,
-                                         save_summaries_secs=0, summary_op=None)
+                                         init_fn=lambda session: after_init(session, model, embeddings_file),
+                                         saver=model.saver, global_step=model.global_step,
+                                         save_model_secs=0, save_summaries_secs=0, summary_op=None,
+                                         summary_writer=None)
 
                 with sv.managed_session(server.target) as sess:
-                    train(sess, model, is_chief, train_data, test_data, job_name, task_index,
-                          sv.should_stop, sv, summary, test_loss, test_perplexity,
-                          bucket_loss_placeholders, bucket_perplexity_placeholders)
+                    train(sess, model, train_data, test_data, summary, summary_writer, test_loss,
+                          test_perplexity, bucket_loss_placeholders, bucket_perplexity_placeholders,
+                          is_chief, job_name, task_index, sv.should_stop)
                 sv.stop()
 
 
-def train_not_distributed():  # TODO finish
-    # Prepare the data
-    train_data, test_data, embeddings_file = prepare_data()
+def train_not_distributed():
+    """Train a model in non-distributed TensorFlow mode."""
+    with tf.Graph().as_default() as graph:
+        # Prepare the data
+        train_data, test_data, embeddings_file = prepare_data()
 
-    # Create model
-    model = create_model(False)
+        # Create model
+        model = create_model(False)
 
-    with tf.Session() as sess:
-        init_model(sess, model, embeddings_file)
+        # Create summaries and SummaryWriter
+        (test_loss, test_perplexity, bucket_loss_placeholders,
+         bucket_perplexity_placeholders, summary, summary_writer) = create_summary_objects(graph)
 
-        def should_stop_fn():
-            return False
+        with tf.Session() as sess:
+            init_model(sess, model)
+            after_init(sess, model, embeddings_file)
 
-        train(sess, model, True, train_data, test_data, "", -1, should_stop_fn)
-    pass
+            train(sess, model, train_data, test_data, summary, summary_writer, test_loss,
+                  test_perplexity, bucket_loss_placeholders, bucket_perplexity_placeholders)
 
 
 def prepare_data():
+    """Prepare the data using functions from data_utils.
+
+    Returns:
+        A tuple of 3 elements:
+            (1) Training data in array form
+            (2) Test data in array form
+            (3) Path to a file containing the word embeddings which should be loaded
+                into the model, if FLAGS.word_embeddings is set
+    """
     if FLAGS.word_embeddings:
         # Get the dialogue data manually.
         vocab_dir = os.path.join(FLAGS.data_dir, "word2vec")
@@ -303,13 +315,62 @@ def prepare_data():
     return train_data, test_data, embeddings_file
 
 
-def build_summaries():
-    pass
+def create_summary_objects(graph=None):
+    """Creates summary ops, placeholders for them and a summary writer.
+
+    Args:
+        graph: The optional graph to pass to the summary_writer to visualize it in TensorBoard
+    Returns:
+        A tuple containing six elements:
+            (1) A placeholder for the overall loss of the network
+            (2) A placeholder for the overall perplexity of the network
+            (3) An array containing placeholders for the loss of each bucket
+            (4) An array containing placeholders for the perplexity of each bucket
+            (5) A Summary op, created by merging all the summaries
+            (6) A SummaryWriter object, to save the summaries with
+    """
+    test_loss = tf.placeholder(tf.float32, [])
+    test_perplexity = tf.placeholder(tf.float32, [])
+    tf.summary.scalar('Loss_overall', test_loss)
+    tf.summary.scalar('Perplexity_overall', test_perplexity)
+    # Do it for each individual bucket as well
+    bucket_loss_placeholders = []
+    bucket_perplexity_placeholders = []
+    for bucket_id in range(0, len(buckets)):
+        bucket_loss = tf.placeholder(tf.float32, [])
+        bucket_perplexity = tf.placeholder(tf.float32, [])
+        tf.summary.scalar('Loss_bucket%d' % bucket_id, bucket_loss)
+        tf.summary.scalar('Perplexity_bucket%d' % bucket_id, bucket_perplexity)
+        bucket_loss_placeholders.append(bucket_loss)
+        bucket_perplexity_placeholders.append(bucket_perplexity)
+    summary = tf.summary.merge_all()
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph)
+    return (test_loss, test_perplexity, bucket_loss_placeholders,
+            bucket_perplexity_placeholders, summary, summary_writer)
 
 
-def train(sess, model, is_chief, train_data, test_data, job_name, task_index, should_stop_fn, sv,
-          summary, test_loss, test_perplexity, bucket_loss_placeholders, bucket_perplexity_placeholders):
-    """Train the chatbot."""
+def train(sess, model, train_data, test_data, summary, summary_writer, test_loss, test_perplexity,
+          bucket_loss_placeholders, bucket_perplexity_placeholders, is_chief=True, job_name=None,
+          task_index=0, should_stop_fn=lambda: False):
+    """Train the model.
+
+    Args:
+        sess: A tensorflow `Session` object to be trained
+        model: The Seq2SeqModel to be trained
+        train_data: The training data in array form
+        test_data: The test data in array form
+        summary: Summary op used to save summaries
+        summary_writer: `SummaryWriter` object
+        test_loss: Placeholder for the loss
+        test_perplexity: Placeholder for the perplexity
+        bucket_loss_placeholders: List of Placeholders for loss of each bucket
+        bucket_perplexity_placeholders: List of Placeholders for perplexity of each bucket
+        is_chief: Optional, whether this thread is the master (if Distributed TF)
+        job_name: Optional, the name of this job ('master' or 'worker') (if Distributed TF)
+        task_index: Optional, the index of the task (if Distributed TF)
+        should_stop_fn: Optional, a function indicating to stop or proceed training
+         (if Distributed TF; sv.should_stop())
+    """
 
     # Compute the sizes of the buckets.
     train_bucket_sizes = [len(train_data[b]) for b in xrange(len(buckets))]
@@ -346,12 +407,14 @@ def train(sess, model, is_chief, train_data, test_data, job_name, task_index, sh
         _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                      target_weights, bucket_id, False)
 
-        # Print updates
+        # Print updates  TODO remove
         print("(%s,%d) Global step %d, loss: %.4f" %
               (job_name, task_index, model.global_step.eval(sess), step_loss))
 
-        # Evaluation time!
-        if is_chief and model.global_step.eval(sess) > FLAGS.steps_per_eval * num_evals:
+        # Evaluation time! When distributed, the first worker does this (the master is busy
+        # saving checkpoints). When not distributed (job_name is None), this is also done.
+        if ((not is_chief and task_index == 0) or job_name is None) \
+                and model.global_step.eval(sess) > FLAGS.steps_per_eval * num_evals:
 
             # Run evals on test set and calculate their perplexity.
             feed_dict = {}  # Feed dict for the summary writer
@@ -374,7 +437,7 @@ def train(sess, model, is_chief, train_data, test_data, job_name, task_index, sh
 
             # Save the summaries
             computed_summary, global_step = sess.run([summary, model.global_step], feed_dict=feed_dict)
-            sv.summary_computed(sess, computed_summary, global_step)
+            summary_writer.add_summary(computed_summary, global_step)
 
             # Print evals to screen
             print("Summary saved. Step: %d, loss: %.4f, perplexity: %.4f" % (global_step, avg_loss, avg_perplexity))
@@ -382,8 +445,9 @@ def train(sess, model, is_chief, train_data, test_data, job_name, task_index, sh
             previous_losses.append(avg_loss)
             num_evals += 1
 
-        # Checkpoint time! This job is for the first worker (the master is busy making evals).
-        if not is_chief and task_index == 0 \
+        # Checkpoint time! When distributed, this is done by the chief.
+        # When not distributed (job_name is None), this is also done.
+        if (is_chief or job_name is None) \
                 and model.global_step.eval(sess) > FLAGS.steps_per_checkpoint * num_checkpoints:
 
             # Decrease learning rate if no improvement was seen over last 3 checkpoint times.
@@ -398,6 +462,7 @@ def train(sess, model, is_chief, train_data, test_data, job_name, task_index, sh
             checkpoint_file = "chatbot-word.ckpt" if FLAGS.words else "chatbot-char.ckpt"
             checkpoint_path = os.path.join(FLAGS.train_dir, checkpoint_file)
             model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+            print("Checkpoint saved!")
 
             num_checkpoints += 1
 
@@ -485,7 +550,7 @@ def main(_):
     elif FLAGS.decode:
         decode()
     else:
-        train_distributed()  # TODO change
+        train_distributed() if FLAGS.distributed else train_not_distributed()
 
 
 if __name__ == "__main__":

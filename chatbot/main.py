@@ -152,8 +152,11 @@ def after_init(session, model, embeddings_file):
     Resets the learning rate if FLAGS.learning_rate_force_reset is set.
 
     This function is not included in init_model() because of Distributed TensorFlow.
-    The Supervisor of Distributed TensorFlow does initialization ifself, after which
+    The Supervisor of Distributed TensorFlow does initialization itself, after which
     this function is called.
+
+    NOTE: Using this function is only useful when creating a model which is going
+    to be trained.
     """
     if embeddings_file is not None:
         print("Reading the word embeddings from the word2vec file")
@@ -468,10 +471,15 @@ def train(sess, model, train_data, test_data, summary, summary_writer, test_loss
 
 
 def decode():
+    """Have a conversation with the chatbot.
+    This will create a (forward-only) Seq2SeqModel and initialize it using the checkpoint
+    file in FLAGS.train_dir, if available. This doesn't work with Distributed TensorFlow.
+    """
     with tf.Session() as sess:
         # Create model and load parameters.
         model = create_model(True)
         model.batch_size = 1  # We decode one sentence at a time.
+        init_model(sess, model)
 
         # Load vocabularies.
         vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words,
@@ -508,7 +516,7 @@ def decode():
 
 
 def self_test():
-    """Test the seq2seq model."""
+    """Test the seq2seq model using fake data."""
     with tf.Session() as sess:
         print("Self-test for seq2seq chatbot model.")
         # Create model with vocabularies of 10, 2 small buckets, 2 layers of 32.
@@ -528,6 +536,7 @@ def self_test():
 
 
 def main(_):
+    """Executed by tf.app.run() and main function of this file."""
     # Set word- and char-specific defaults.
     words = FLAGS.words
     if FLAGS.vocab_size == -1:

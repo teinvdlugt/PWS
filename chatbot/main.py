@@ -77,8 +77,9 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_integer("steps_per_eval", 10,
                             "After how many training steps an evaluation will be done")
-tf.app.flags.DEFINE_integer("max_training_steps", 5000,
-                            "Amount of training steps to do when executing the TF application")
+tf.app.flags.DEFINE_integer("max_training_steps", 100000,
+                            "Amount of training steps to do IN TOTAL, so including the steps "
+                            "already done in previous training sessions")
 tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
                                                    "put into buckets, to disk using np.save")
 tf.app.flags.DEFINE_boolean("decode", False,
@@ -393,7 +394,7 @@ def train(sess, model, train_data, test_data, summary, summary_writer, test_loss
     num_evals = global_step // FLAGS.steps_per_eval
     previous_losses = []
     avg_loss = None
-    num_checkpoints = global_step // FLAGS.steps_per_checkpoint  # Will be used by the first worker
+    num_checkpoints = (global_step // FLAGS.steps_per_checkpoint) + 1  # Will be used by the first worker
 
     # This is the training loop.
     print("(%s,%d) Training begins!" % (job_name, task_index))

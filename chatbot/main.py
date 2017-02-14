@@ -254,9 +254,11 @@ def train_distributed():
                 # Create supervisor
                 init_op = tf.global_variables_initializer()
 
-                # variables = tf.global_variables()
-                # for variable in variables:
-                #     print(variable.name, variable.device)
+                variables = tf.global_variables()  # TODO remove
+                for variable in variables:
+                    print(variable.name, variable.device)
+                    if variable.device is None or variable.device == "":
+                        print("CAUTION! Variable " + variable.name + " doesn't have a device set!")
 
                 # Create Supervisor. Disabling checkpoints and summaries, because we do that manually
                 sv = tf.train.Supervisor(is_chief=is_chief, logdir=FLAGS.train_dir, init_op=init_op,
@@ -284,6 +286,12 @@ def train_not_distributed():
         # Create summaries and SummaryWriter
         (test_loss, test_perplexity, bucket_loss_placeholders,
          bucket_perplexity_placeholders, summary, summary_writer) = create_summary_objects(graph)
+
+        variables = tf.global_variables()  # TODO remove
+        for variable in variables:
+            print(variable.name, variable.device)
+            if variable.device is None or variable.device == "":
+                print("CAUTION! Variable " + variable.name + " doesn't have a device set!")
 
         with tf.Session() as sess:
             init_model(sess, model)

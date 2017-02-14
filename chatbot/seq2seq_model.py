@@ -23,6 +23,7 @@ import random
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.ops import variable_scope
 
 from . import data_utils
 
@@ -64,7 +65,7 @@ class Seq2SeqModel(object):
                  use_lstm=False,
                  num_samples=512,
                  forward_only=False,
-                 word_embeddings_non_trainable=False,
+                 word2vec=False,
                  dtype=tf.float32):
         """Create the model.
 
@@ -86,8 +87,8 @@ class Seq2SeqModel(object):
           use_lstm: if true, we use LSTM cells instead of GRU cells.
           num_samples: number of samples for sampled softmax.
           forward_only: if set, we do not construct the backward pass in the model.
-          word_embeddings_non_trainable: Set to True if you want the word embeddings
-            to not be trained.
+          word2vec: Set to True, the word embedding Variables will become
+            untrainable and assign ops & placeholders will be created to assign word2vec arrays
           dtype: the data type to use to store internal variables.
         """
         self.vocab_size = vocab_size
@@ -185,8 +186,11 @@ class Seq2SeqModel(object):
 
         # Gradients and SGD update operation for training the model.
         params = tf.trainable_variables()
-        if word_embeddings_non_trainable:
+        if word2vec:
+            # If we're using word2vec arrays, the embeddings should be non-trainable
             params = remove_word_embeddings(params)
+            # and we create assign ops to assign the word2vec embeddings later on
+            self.create_word2vec_assign_ops()
         if not forward_only:
             self.gradient_norms = []
             self.updates = []
@@ -201,7 +205,25 @@ class Seq2SeqModel(object):
                 self.updates.append(opt.apply_gradients(
                     zip(clipped_gradients, params), global_step=self.global_step))
 
+        # Create an assign op for the learning rate (i.v.m. learning_rate_force_reset)
+        self.learning_rate_placeholder = tf.placeholder(self.learning_rate.dtype)
+        self.learning_rate_assign_op = self.learning_rate.assign(self.learning_rate_placeholder)
+
+        # Create saver to save model checkpoints
         self.saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+
+    def create_word2vec_assign_ops(self):
+        with variable_scope.variable_scope("embedding_attention_seq2seq/RNN/EmbeddingWrapper",
+                                           reuse=True) as scope:
+            encoder_embedding = variable_scope.get_variable("embedding")
+        with variable_scope.variable_scope("embedding_attention_seq2seq/embedding_attention_decoder",
+                                           reuse=True) as scope:
+            decoder_embedding = variable_scope.get_variable("embedding")
+        shape = encoder_embedding.get_shape()  # Returns a tuple of silly 'Dimension' objects
+        shape_values = tuple([shape[i].value for i in range(0, len(shape))])
+        self.word2vec_placeholder = tf.placeholder(encoder_embedding.dtype, shape_values)
+        self.word2vec_assign_encoder_op = encoder_embedding.assign(self.word2vec_placeholder)
+        self.word2vec_assign_decoder_op = decoder_embedding.assign(self.word2vec_placeholder)
 
     def step(self, session, encoder_inputs, decoder_inputs, target_weights,
              bucket_id, forward_only):

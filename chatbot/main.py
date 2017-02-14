@@ -96,7 +96,7 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 BUCKETS_CHARS = [(10, 40), (30, 100), (60, 100), (100, 200)]
 BUCKETS_WORDS = [(5, 10), (10, 15), (20, 25), (40, 50)]
-buckets = BUCKETS_WORDS if FLAGS.words else [BUCKETS_CHARS[1]]  # TODO undo
+buckets = [BUCKETS_WORDS[1]] if FLAGS.words else [BUCKETS_CHARS[1]]  # TODO undo
 
 
 def create_model(forward_only):
@@ -123,7 +123,7 @@ def create_model(forward_only):
         FLAGS.learning_rate_decay_factor,
         num_samples=FLAGS.num_samples,
         forward_only=forward_only,
-        word_embeddings_non_trainable=word_embeddings_non_trainable,
+        word2vec=word_embeddings_non_trainable,
         dtype=dtype)
     return model
 
@@ -161,12 +161,17 @@ def after_init(session, model, embeddings_file):
     """
     if embeddings_file is not None:
         print("Reading the word embeddings from the word2vec file")
-        init_word_embeddings(session, embeddings_file)
+        init_word_embeddings(session, model, embeddings_file)
+        with variable_scope.variable_scope("embedding_attention_seq2seq/RNN/EmbeddingWrapper",
+                                           reuse=True) as scope:
+            encoder_embedding = variable_scope.get_variable("embedding")
+            print(session.run(encoder_embedding))
     if FLAGS.learning_rate_force_reset:
-        session.run(model.learning_rate.assign(FLAGS.learning_rate))
+        session.run(model.learning_rate_assign_op,
+                    feed_dict={model.learning_rate_placeholder: FLAGS.learning_rate})
 
 
-def init_word_embeddings(session, embeddings_file):
+def init_word_embeddings(session, model, embeddings_file):
     """Replace the random initialized word-embedding arrays in session with word2vec embeddings
     and make them non-trainable"""
     # Create word embedding array from word2vec file
@@ -187,12 +192,9 @@ def init_word_embeddings(session, embeddings_file):
     # "embedding_attention_seq2seq/RNN/EmbeddingWrapper/embedding"
     # "embedding_attention_seq2seq/embedding_attention_decoder/embedding"
     np_embeddings = np.array(embeddings)
-    with variable_scope.variable_scope("embedding_attention_seq2seq/RNN/EmbeddingWrapper", reuse=True) as scope:
-        embedding = variable_scope.get_variable("embedding")
-        session.run(embedding.assign(np_embeddings))
-    with variable_scope.variable_scope("embedding_attention_seq2seq/embedding_attention_decoder", reuse=True) as scope:
-        embedding = variable_scope.get_variable("embedding")
-        session.run(embedding.assign(np_embeddings))
+    feed_dict = {model.word2vec_placeholder: np_embeddings}
+    session.run(model.word2vec_assign_encoder_op, feed_dict=feed_dict)
+    session.run(model.word2vec_assign_decoder_op, feed_dict=feed_dict)
 
 
 def calculate_perplexity(loss):
@@ -251,6 +253,10 @@ def train_distributed():
 
                 # Create supervisor
                 init_op = tf.global_variables_initializer()
+
+                # variables = tf.global_variables()
+                # for variable in variables:
+                #     print(variable.name, variable.device)
 
                 # Create Supervisor. Disabling checkpoints and summaries, because we do that manually
                 sv = tf.train.Supervisor(is_chief=is_chief, logdir=FLAGS.train_dir, init_op=init_op,

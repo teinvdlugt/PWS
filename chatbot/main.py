@@ -46,7 +46,7 @@ char_default_num_samples = 0
 # TensorFlow flags: you can set the values using command line parameters.
 tf.app.flags.DEFINE_boolean("words", False, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
-tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.85,
+tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
 tf.app.flags.DEFINE_boolean("learning_rate_force_reset", False,
                             "Whether to reset the learning rate to the"

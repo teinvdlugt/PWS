@@ -264,7 +264,7 @@ def read_data(dialogue_file, buckets, max_lines=None, start_reading_at=0):
         count = 0
         while input_sentence and output_sentence and (not max_lines or count < max_lines):
             count += 1
-            if count % 100000 == 0:
+            if count % 500000 == 0:
                 print("  reading data line %d" % count)
                 sys.stdout.flush()
 

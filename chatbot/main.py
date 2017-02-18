@@ -98,7 +98,7 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 BUCKETS_CHARS = [(10, 40), (30, 100), (60, 100), (100, 200)]
 BUCKETS_WORDS = [(5, 10), (10, 15), (20, 25), (40, 50)]
-buckets = BUCKETS_WORDS if FLAGS.words else BUCKETS_CHARS  # TODO undo!!
+buckets = BUCKETS_WORDS if FLAGS.words else BUCKETS_CHARS
 
 
 def create_model(forward_only):
@@ -456,9 +456,10 @@ def train(sess, model, train_data, test_data, summary, summary_writer, test_loss
         if (is_chief or job_name is None) \
                 and model.global_step.eval(sess) > FLAGS.steps_per_checkpoint * num_checkpoints:
 
-            # Decrease learning rate if no improvement was seen over last 3 checkpoint times.
+            # If SGD, decrease learning rate if no improvement was seen over last 3 checkpoint times.
             last_n_evals = 3 * FLAGS.steps_per_checkpoint / FLAGS.steps_per_eval
-            if avg_loss and len(previous_losses) >= last_n_evals \
+            if not FLAGS.adagrad and not FLAGS.adadelta and \
+                    avg_loss and len(previous_losses) >= last_n_evals \
                     and avg_loss > max(previous_losses[-last_n_evals:]):
                 sess.run(model.learning_rate_decay_op)
                 print("Learning rate decayed.")

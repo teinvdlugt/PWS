@@ -96,7 +96,7 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 BUCKETS_CHARS = [(10, 40), (30, 100), (60, 100), (100, 200)]
 BUCKETS_WORDS = [(5, 10), (10, 15), (20, 25), (40, 50)]
-buckets = [BUCKETS_WORDS[1]] if FLAGS.words else [BUCKETS_CHARS[1]]  # TODO undo
+buckets = BUCKETS_WORDS if FLAGS.words else BUCKETS_CHARS
 
 
 def create_model(forward_only):
@@ -254,12 +254,6 @@ def train_distributed():
                 # Create supervisor
                 init_op = tf.global_variables_initializer()
 
-                variables = tf.global_variables()  # TODO remove
-                for variable in variables:
-                    print(variable.name, variable.device)
-                    if variable.device is None or variable.device == "":
-                        print("CAUTION! Variable " + variable.name + " doesn't have a device set!")
-
                 # Create Supervisor. Disabling checkpoints and summaries, because we do that manually
                 sv = tf.train.Supervisor(is_chief=is_chief, logdir=FLAGS.train_dir, init_op=init_op,
                                          init_fn=lambda session: after_init(session, model, embeddings_file),
@@ -286,12 +280,6 @@ def train_not_distributed():
         # Create summaries and SummaryWriter
         (test_loss, test_perplexity, bucket_loss_placeholders,
          bucket_perplexity_placeholders, summary, summary_writer) = create_summary_objects(graph)
-
-        variables = tf.global_variables()  # TODO remove
-        for variable in variables:
-            print(variable.name, variable.device)
-            if variable.device is None or variable.device == "":
-                print("CAUTION! Variable " + variable.name + " doesn't have a device set!")
 
         with tf.Session() as sess:
             init_model(sess, model)
@@ -424,10 +412,6 @@ def train(sess, model, train_data, test_data, summary, summary_writer, test_loss
             train_data, bucket_id)
         _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                      target_weights, bucket_id, False)
-
-        # Print updates  TODO remove
-        print("(%s,%d) Global step %d, loss: %.4f" %
-              (job_name, task_index, model.global_step.eval(sess), step_loss))
 
         # Evaluation time! When distributed, the first worker does this (the master is busy
         # saving checkpoints). When not distributed (job_name is None), this is also done.

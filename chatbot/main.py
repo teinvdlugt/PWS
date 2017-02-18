@@ -82,6 +82,8 @@ tf.app.flags.DEFINE_integer("max_training_steps", 100000,
                             "already done in previous training sessions")
 tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
                                                    "put into buckets, to disk using np.save")
+tf.app.flags.DEFINE_boolean("adagrad", False, "Use AdaGrad as optimization algorithm")
+tf.app.flags.DEFINE_boolean("adadelta", False, "Use AdaDelta as optimization algorithm")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding (in stead of training).")
 tf.app.flags.DEFINE_boolean("self_test", False,
@@ -96,7 +98,7 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 BUCKETS_CHARS = [(10, 40), (30, 100), (60, 100), (100, 200)]
 BUCKETS_WORDS = [(5, 10), (10, 15), (20, 25), (40, 50)]
-buckets = BUCKETS_WORDS if FLAGS.words else BUCKETS_CHARS
+buckets = BUCKETS_WORDS if FLAGS.words else BUCKETS_CHARS  # TODO undo!!
 
 
 def create_model(forward_only):
@@ -124,7 +126,9 @@ def create_model(forward_only):
         num_samples=FLAGS.num_samples,
         forward_only=forward_only,
         word2vec=word_embeddings_non_trainable,
-        dtype=dtype)
+        dtype=dtype,
+        adagrad=FLAGS.adagrad,
+        adadelta=FLAGS.adadelta)
     return model
 
 

@@ -66,7 +66,9 @@ class Seq2SeqModel(object):
                  num_samples=512,
                  forward_only=False,
                  word2vec=False,
-                 dtype=tf.float32):
+                 dtype=tf.float32,
+                 adagrad=False,
+                 adadelta=False):
         """Create the model.
 
         Args:
@@ -90,6 +92,8 @@ class Seq2SeqModel(object):
           word2vec: Set to True, the word embedding Variables will become
             untrainable and assign ops & placeholders will be created to assign word2vec arrays
           dtype: the data type to use to store internal variables.
+          adagrad: Whether to use AdaGrad instead of SGD
+          adadelta: Whether to use Adadelta instead of SGD
         """
         self.vocab_size = vocab_size
         self.buckets = buckets
@@ -194,8 +198,15 @@ class Seq2SeqModel(object):
         if not forward_only:
             self.gradient_norms = []
             self.updates = []
-            print("   Creating GradientDescentOptimizer...")
-            opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+
+            # Create optimizer
+            if adagrad:
+                opt = tf.train.AdagradOptimizer(self.learning_rate)
+            elif adadelta:
+                opt = tf.train.AdadeltaOptimizer(self.learning_rate)
+            else:
+                opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+
             for b in range(len(buckets)):
                 print("   Constructing gradients: %d of %d" % (b + 1, len(buckets)))
                 gradients = tf.gradients(self.losses[b], params)

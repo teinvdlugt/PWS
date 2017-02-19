@@ -26,19 +26,16 @@ from __future__ import print_function
 import math
 import os
 import random
-import sys
 import time
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
+from flask import Flask, request
 
-from flask import Flask, render_template, request, jsonify
+from . import data_utils
+from . import seq2seq_model
 
-#from . import data_utils
-#from . import seq2seq_model
-
-# Flask web interface
 web_app = Flask(__name__)
 
 # Let's set some default hyperparameter values for char- and word-chatbot respectively.
@@ -49,7 +46,7 @@ word_default_num_samples = 512
 char_default_num_samples = 0
 
 # TensorFlow flags: you can set the values using command line parameters.
-tf.app.flags.DEFINE_boolean("words", False, "True when using the word-based model, False when using chars")
+tf.app.flags.DEFINE_boolean("word", True, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.85,
                           "Learning rate decays by this much.")
@@ -64,10 +61,10 @@ tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Original
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
 tf.app.flags.DEFINE_integer("vocab_size", -1, "Vocabulary size.")  # TODO use 0 for default values
 tf.app.flags.DEFINE_boolean("num_samples", -1, "Number of samples for the sampled softmax (0: no sampled softmax)")
-tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
+tf.app.flags.DEFINE_string("data_dir", "./data/first_dataset", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
-tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
-tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogue file used for testing.")
+tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/first_dataset/train.txt", "The dialogue file used for training.")
+tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/first_dataset/test.txt", "The dialogue file used for testing.")
 tf.app.flags.DEFINE_integer("max_read_train_data", 0,
                             "Limit on the size of training data to read into buckets (0: no limit).")
 tf.app.flags.DEFINE_integer("max_read_test_data", 0,
@@ -96,7 +93,7 @@ _buckets_words = [(5, 10), (10, 15), (20, 25), (40, 50)]
 def create_model(session, forward_only):
     """Create seq2seq model and initialize or load parameters in session."""
     # Determine some parameters
-    _buckets = _buckets_words if FLAGS.words else _buckets_chars
+    _buckets = _buckets_words if FLAGS.word else _buckets_chars
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
 
     # Create Seq2SeqModel object
@@ -129,11 +126,11 @@ def create_model(session, forward_only):
 def train():
     """Train the chatbot."""
     # Decide which buckets to use
-    _buckets = _buckets_words if FLAGS.words else _buckets_chars
+    _buckets = _buckets_words if FLAGS.word else _buckets_chars
 
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size,
+    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.word, FLAGS.data_dir, FLAGS.vocab_size,
                                                              _buckets, FLAGS.max_read_train_data,
                                                              FLAGS.max_read_test_data, save=FLAGS.save_pickles)
 
@@ -203,7 +200,7 @@ def train():
 
                 # Save checkpoint and zero timer and loss.
                 print("Saving checkpoint...")
-                checkpoint_file = "chatbot-word.ckpt" if FLAGS.words else "chatbot-char.ckpt"
+                checkpoint_file = "chatbot-word.ckpt" if FLAGS.word else "chatbot-char.ckpt"
                 checkpoint_path = os.path.join(FLAGS.train_dir, checkpoint_file)
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
                 avg_step_time, loss = 0.0, 0.0
@@ -232,17 +229,14 @@ def decode():
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words, FLAGS.vocab_size)
+        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.word, FLAGS.vocab_size)
 
         # Determine buckets
-        _buckets = _buckets_words if FLAGS.words else _buckets_chars
+        _buckets = _buckets_words if FLAGS.word else _buckets_chars
 
         # Decode from standard input.
-        #sys.stdout.flush()
-        #sentence = sys.stdin.readline()
-        chat()
-        sentence = chat.message
-        while sentence:
+        # from . import gui
+        while message():
             # Get token-ids for the input sentence.
             token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,
                                                          data_utils.basic_word_tokenizer)
@@ -261,15 +255,7 @@ def decode():
             if data_utils.EOS_ID in outputs:
                 outputs = outputs[:outputs.index(data_utils.EOS_ID)]
             # Print out the network's response to the input.
-            print("".join([tf.compat.as_str(rev_vocab[output]) for output in outputs]))
-            print("> ", end="")
-            sys.stdout.flush()
-            sentence = sys.stdin.readline()
-
-
-# for testing purposes
-def example_decode():
-    return "Success"
+            return "".join([tf.compat.as_str(rev_vocab[output]) for output in outputs])
 
 
 def self_test():
@@ -292,22 +278,9 @@ def self_test():
                        bucket_id, False)
 
 
-@web_app.route('/')
-def index():
-    return render_template('chatbot.html')
-
-
-@web_app.route('/chat', methods=['POST'])
-def chat():
-    chat.message = str(request.form['messageContent'])
-    # just for testing
-    success = example_decode()
-    return jsonify({'status': 'OK', 'answer': success})
-
-
 def main(_):
     # Set word- and char-specific defaults.
-    words = FLAGS.words
+    words = FLAGS.word
     if FLAGS.vocab_size == -1:
         FLAGS.__setattr__("vocab_size", word_default_vocab_size if words else char_default_vocab_size)
     if FLAGS.num_samples == -1:
@@ -323,5 +296,4 @@ def main(_):
 
 
 if __name__ == "__main__":
-    #tf.app.run()
-    web_app.run(debug=True)
+    tf.app.run()

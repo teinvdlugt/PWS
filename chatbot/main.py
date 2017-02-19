@@ -31,7 +31,7 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
-from flask import Flask, request
+from flask import Flask
 
 from . import data_utils
 from . import seq2seq_model
@@ -46,7 +46,7 @@ word_default_num_samples = 512
 char_default_num_samples = 0
 
 # TensorFlow flags: you can set the values using command line parameters.
-tf.app.flags.DEFINE_boolean("word", True, "True when using the word-based model, False when using chars")
+tf.app.flags.DEFINE_boolean("words", True, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.85,
                           "Learning rate decays by this much.")
@@ -75,7 +75,7 @@ tf.app.flags.DEFINE_integer("max_training_steps", 5000,
                             "Amount of training steps to do when executing the TF application")
 tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
                                                    "put into buckets, to disk using np.save")
-tf.app.flags.DEFINE_boolean("decode", True,
+tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding (in stead of training).")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
@@ -93,7 +93,7 @@ _buckets_words = [(5, 10), (10, 15), (20, 25), (40, 50)]
 def create_model(session, forward_only):
     """Create seq2seq model and initialize or load parameters in session."""
     # Determine some parameters
-    _buckets = _buckets_words if FLAGS.word else _buckets_chars
+    _buckets = _buckets_words if FLAGS.words else _buckets_chars
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
 
     # Create Seq2SeqModel object
@@ -126,11 +126,11 @@ def create_model(session, forward_only):
 def train():
     """Train the chatbot."""
     # Decide which buckets to use
-    _buckets = _buckets_words if FLAGS.word else _buckets_chars
+    _buckets = _buckets_words if FLAGS.words else _buckets_chars
 
     # Prepare dialogue data.
     print("Preparing dialogue data in %s" % FLAGS.data_dir)
-    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.word, FLAGS.data_dir, FLAGS.vocab_size,
+    train_data, test_data = data_utils.prepare_dialogue_data(FLAGS.words, FLAGS.data_dir, FLAGS.vocab_size,
                                                              _buckets, FLAGS.max_read_train_data,
                                                              FLAGS.max_read_test_data, save=FLAGS.save_pickles)
 
@@ -200,7 +200,7 @@ def train():
 
                 # Save checkpoint and zero timer and loss.
                 print("Saving checkpoint...")
-                checkpoint_file = "chatbot-word.ckpt" if FLAGS.word else "chatbot-char.ckpt"
+                checkpoint_file = "chatbot-word.ckpt" if FLAGS.words else "chatbot-char.ckpt"
                 checkpoint_path = os.path.join(FLAGS.train_dir, checkpoint_file)
                 model.saver.save(sess, checkpoint_path, global_step=model.global_step)
                 avg_step_time, loss = 0.0, 0.0
@@ -229,10 +229,10 @@ def decode():
         model.batch_size = 1  # We decode one sentence at a time.
 
         # Load vocabularies.
-        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.word, FLAGS.vocab_size)
+        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words, FLAGS.vocab_size)
 
         # Determine buckets
-        _buckets = _buckets_words if FLAGS.word else _buckets_chars
+        _buckets = _buckets_words if FLAGS.words else _buckets_chars
 
         # Decode from standard input.
         # from . import gui
@@ -280,7 +280,7 @@ def self_test():
 
 def main(_):
     # Set word- and char-specific defaults.
-    words = FLAGS.word
+    words = FLAGS.words
     if FLAGS.vocab_size == -1:
         FLAGS.__setattr__("vocab_size", word_default_vocab_size if words else char_default_vocab_size)
     if FLAGS.num_samples == -1:

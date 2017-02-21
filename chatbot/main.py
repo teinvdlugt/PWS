@@ -61,8 +61,8 @@ tf.app.flags.DEFINE_integer("vocab_size", -1, "Vocabulary size.")
 tf.app.flags.DEFINE_boolean("num_samples", -1, "Number of samples for the sampled softmax (0: no sampled softmax)")
 tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
-tf.app.flags.DEFINE_string("train_dialogue", "PWS/data/os/train.txt", "The dialogue file used for training.")
-tf.app.flags.DEFINE_string("test_dialogue", "PWS/data/os/test.txt", "The dialogue file used for testing.")
+tf.app.flags.DEFINE_string("tensorboard_logdir", None, "Directory to store TensorBoard summaries. "
+                                                       "If None (default), it becomes the same as train_dir.")
 tf.app.flags.DEFINE_boolean("word_embeddings", False, "Whether to use preset word embeddings.")
 tf.app.flags.DEFINE_integer("max_read_train_data", 0,
                             "Limit on the size of training data to read into buckets (0: no limit).")
@@ -354,7 +354,7 @@ def create_summary_objects(graph=None):
         bucket_loss_placeholders.append(bucket_loss)
         bucket_perplexity_placeholders.append(bucket_perplexity)
     summary = tf.summary.merge_all()
-    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.tensorboard_logdir, graph)
     return (test_loss, test_perplexity, bucket_loss_placeholders,
             bucket_perplexity_placeholders, summary, summary_writer)
 
@@ -541,12 +541,14 @@ def self_test():
 
 def main(_):
     """Executed by tf.app.run() and main function of this file."""
-    # Set word- and char-specific defaults.
+    # Set FLAGS defaults.
     words = FLAGS.words
     if FLAGS.vocab_size == -1:
         FLAGS.__setattr__("vocab_size", word_default_vocab_size if words else char_default_vocab_size)
     if FLAGS.num_samples == -1:
         FLAGS.__setattr__("num_samples", word_default_num_samples if words else char_default_num_samples)
+    if FLAGS.tensorboard_logdir is None:
+        FLAGS.__setattr__("tensorboard_logdir", FLAGS.train_dir)
 
     if FLAGS.words:
         data_utils._START_VOCAB = data_utils.START_VOCAB_WORD

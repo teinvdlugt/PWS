@@ -6,7 +6,7 @@ from .. import data_utils
 
 vocab_size = 3500
 vocab_text_path = "./data/os/test.txt"
-max_read_text_for_vocab = 2000000
+max_read_text_for_vocab = 0  # Zero for no limit
 vocab_path = "./data/os/word2vec/vocab%d" % vocab_size
 new_embedding_path = "./data/os/word2vec/embeddings%d" % vocab_size
 word2vec_file_path = "./data/word_embeddings/word2vec10000"
@@ -64,7 +64,7 @@ def maybe_create_vocab_and_embeddings_from_word2vec():
                 counter += 1
                 if counter % 100000 == 0:
                     print(" processing line %d" % counter)
-                if counter >= max_read_text_for_vocab:
+                if counter >= max_read_text_for_vocab and not max_read_text_for_vocab == 0:
                     print("Maximum exceeded")
                     break
 

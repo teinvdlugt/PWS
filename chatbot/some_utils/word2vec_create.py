@@ -4,16 +4,16 @@ import numpy as np
 import tensorflow as tf
 from .. import data_utils
 
-vocab_size = 3500
-vocab_text_path = "./data/os/test.txt"
+vocab_size = 7000
+vocab_text_path = "gs://pws-storage/data/test.txt"  # Google Cloud Storage uri
 max_read_text_for_vocab = 0  # Zero for no limit
-vocab_path = "./data/os/word2vec/vocab%d" % vocab_size
-new_embedding_path = "./data/os/word2vec/embeddings%d" % vocab_size
-word2vec_file_path = "./data/word_embeddings/word2vec10000"
-train_path = "./data/os/train.txt"
-test_path = "./data/os/test.txt"
-train_ids_path = "./data/os/word2vec/train_ids%d" % vocab_size
-test_ids_path = "./data/os/word2vec/test_ids%d" % vocab_size
+vocab_path = "gs://pws-storage/data/word2vec/vocab%d" % vocab_size
+new_embedding_path = "gs://pws-storage/data/word2vec/embeddings%d" % vocab_size
+word2vec_file_path = "gs://pws-storage/data/word_embeddings/word2vec200000"
+train_path = "gs://pws-storage/data/train.txt"
+test_path = "gs://pws-storage/data/test.txt"
+train_ids_path = "gs://pws-storage/data/word2vec/train_ids%d" % vocab_size
+test_ids_path = "gs://pws-storage/data/word2vec/test_ids%d" % vocab_size
 
 _WORD_SPLIT = re.compile(b"([.,!?\"':;)(])")
 _START_VOCAB = ["_PAD", "_GO", "_EOS", "_UNK"]

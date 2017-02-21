@@ -166,10 +166,6 @@ def after_init(session, model, embeddings_file):
     if embeddings_file is not None:
         print("Reading the word embeddings from the word2vec file")
         init_word_embeddings(session, model, embeddings_file)
-        with variable_scope.variable_scope("embedding_attention_seq2seq/RNN/EmbeddingWrapper",
-                                           reuse=True) as scope:
-            encoder_embedding = variable_scope.get_variable("embedding")
-            print(session.run(encoder_embedding))
     if FLAGS.learning_rate_force_reset:
         session.run(model.learning_rate_assign_op,
                     feed_dict={model.learning_rate_placeholder: FLAGS.learning_rate})

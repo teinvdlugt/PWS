@@ -32,12 +32,9 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
-from flask import Flask
 
 from . import data_utils
 from . import seq2seq_model
-
-web_app = Flask(__name__)
 
 # Let's set some default hyperparameter values for char- and word-chatbot respectively.
 # These will be set in main(), if the FLAGS values are equal to -1.
@@ -76,7 +73,7 @@ tf.app.flags.DEFINE_integer("max_training_steps", 5000,
                             "Amount of training steps to do when executing the TF application")
 tf.app.flags.DEFINE_boolean("save_pickles", False, "Whether to save the training and test data, "
                                                    "put into buckets, to disk using np.save")
-tf.app.flags.DEFINE_boolean("decode", True,
+tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding (in stead of training).")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
@@ -122,26 +119,6 @@ def create_model(session, forward_only):
         print("Creating model with fresh parameters.")
         session.run(tf.global_variables_initializer())
     return model
-
-
-def init_model(session, model):
-    """Load the variables from a checkpoint, or initialize them using tf.global_variables_initializer()"""
-    # If there is a checkpoint, load it
-    if not tf.gfile.Exists(FLAGS.train_dir):
-        tf.gfile.MkDir(FLAGS.train_dir)
-    ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-    if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
-        print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-        model.saver.restore(session, ckpt.model_checkpoint_path)
-
-    # Else initialize the variables
-    else:
-        if FLAGS.decode:
-            input("You sure you want to talk to an untrained chatbot? Press Ctrl-C to stop, Return to continue ")
-            print("Fine.")
-
-        print("Creating model with fresh parameters.")
-        session.run(tf.global_variables_initializer())
 
 
 def train():
@@ -250,13 +227,11 @@ def decode():
     """
     with tf.Session() as sess:
         # Create model and load parameters.
-        model = create_model(True)
+        model = create_model(sess, True)
         model.batch_size = 1  # We decode one sentence at a time.
-        init_model(sess, model)
 
         # Load vocabularies.
-        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words,
-                                                     FLAGS.word_embeddings, FLAGS.vocab_size)
+        vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words, FLAGS.vocab_size)
 
         # Decode from standard input.
         sys.stdout.write("> ")
@@ -267,8 +242,8 @@ def decode():
             token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), vocab,
                                                          data_utils.basic_word_tokenizer)
             # Which bucket does it belong to?
-            bucket_id = min([b for b in xrange(len(buckets))
-                             if buckets[b][0] > len(token_ids)])
+            bucket_id = min([b for b in xrange(len(_buckets))
+                             if _buckets[b][0] > len(token_ids)])
             # Get a 1-element batch to feed the sentence to the model.
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 {bucket_id: [(token_ids, [])]}, bucket_id)
@@ -286,42 +261,6 @@ def decode():
             print("> ", end="")
             sys.stdout.flush()
             sentence = sys.stdin.readline()
-
-
-def init_session(sess):
-    # Create model and load parameters.
-    model = create_model(sess, True)
-    model.batch_size = 1  # We decode one sentence at a time.
-    init_model(sess, model)
-
-    # Load vocabularies.
-    vocab, rev_vocab = data_utils.get_vocabulary(FLAGS.data_dir, FLAGS.words,
-                                                 FLAGS.word_embeddings, FLAGS.vocab_size)
-
-    return sess, model, vocab, rev_vocab
-
-
-def decode_message(sess, model, vocab, rev_vocab, message):
-    # Get token-ids for the input sentence.
-    token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(message), vocab,
-                                                 data_utils.basic_word_tokenizer)
-    # Which bucket does it belong to?
-    _buckets = _buckets_words if FLAGS.words else _buckets_chars
-    bucket_id = min([b for b in xrange(len(_buckets))
-                     if _buckets[b][0] > len(token_ids)])
-    # Get a 1-element batch to feed the sentence to the model.
-    encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-        {bucket_id: [(token_ids, [])]}, bucket_id)
-    # Get output logits for the sentence.
-    _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
-                                     target_weights, bucket_id, True)
-    # This is a greedy decoder - outputs are just argmaxes of output_logits.
-    outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
-    # If there is an EOS symbol in outputs, cut them at that point.
-    if data_utils.EOS_ID in outputs:
-        outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-
-    return " ".join([tf.compat.as_str(rev_vocab[output] for output in outputs)])
 
 
 def self_test():

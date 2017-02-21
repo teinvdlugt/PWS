@@ -26,9 +26,8 @@ from __future__ import print_function
 import json
 import math
 import os
-import sys
 import random
-import time
+import sys
 
 import numpy as np
 import tensorflow as tf
@@ -45,7 +44,7 @@ word_default_num_samples = 512
 char_default_num_samples = 0
 
 # TensorFlow flags: you can set the values using command line parameters.
-tf.app.flags.DEFINE_boolean("words", True, "True when using the word-based model, False when using chars")
+tf.app.flags.DEFINE_boolean("words", False, "True when using the word-based model, False when using chars")
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
@@ -60,7 +59,7 @@ tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")  # Original
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")  # Originally 3
 tf.app.flags.DEFINE_integer("vocab_size", -1, "Vocabulary size.")
 tf.app.flags.DEFINE_boolean("num_samples", -1, "Number of samples for the sampled softmax (0: no sampled softmax)")
-tf.app.flags.DEFINE_string("data_dir", "./data/first_dataset", "Data directory")
+tf.app.flags.DEFINE_string("data_dir", "./data/os", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "./data/checkpoints-chars", "Directory to store the training checkpoints.")
 tf.app.flags.DEFINE_string("tensorboard_logdir", None, "Directory to store TensorBoard summaries. "
                                                        "If None (default), it becomes the same as train_dir.")

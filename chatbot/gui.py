@@ -45,8 +45,6 @@ def init_session_model_vocab(checkpoint_path, vocab_path):
 
 
 def answer_message(message):
-    print("Message: " + message)
-
     # Init model if it hasn't already been initialized
     global session, model, vocab, rev_vocab, buckets
     if session is None or model is None:
@@ -59,7 +57,6 @@ def answer_message(message):
     # Which bucket does it belong to?
     bucket_id = min([b for b in xrange(len(buckets))
                      if buckets[b][0] > len(token_ids)])
-    print("Bucket %d" % bucket_id)
 
     # Get a 1-element batch to feed the sentence to the model.
     encoder_inputs, decoder_inputs, target_weights = model.get_batch(
@@ -71,10 +68,6 @@ def answer_message(message):
 
     # This is a greedy decoder - outputs are just argmaxes of output_logits.
     outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
-    print(outputs)
-    print("Vocab: " + str(vocab))
-    print("Reverse vocab: " + str(rev_vocab))
-    print([rev_vocab[output] for output in outputs])
 
     # If there is an EOS symbol in outputs, cut them at that point.
     if data_utils.EOS_ID in outputs:

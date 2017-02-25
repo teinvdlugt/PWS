@@ -6,6 +6,7 @@
     <!-- Page styles -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <link rel="stylesheet prefetch" href="/static/jquery.mCustomScrollbar.min.css">
 </head>
 <body>
 <div class="container-fluid">
@@ -17,13 +18,13 @@
         <div class="col-md-12">
             <div id="chatPanel" class="panel panel-primary">
                 <div class="panel-heading">Chat</div>
-                <div class="panel-body" style="min-height: 352px; max-height: 352px; overflow-y: auto">
+                <div class="panel-body message-container" style="min-height: 352px; max-height: 352px;">
                     <p class="media-list"></p>
                 </div>
                 <div class="panel-footer">
                     <form id="chatbot" method="post">
                         <div class="input-group">
-                            <input type="text" class="form-control" placeholder="Chat..." name="messageContent" id="messageContent" autofocus>
+                            <input type="text" class="form-control" placeholder="Chat..." name="messageContent" id="messageContent" autocomplete="off" autofocus>
                             <span class="input-group-btn">
                                 <button class="btn btn-success" type="button" id="chat-button"><span class="glyphicon glyphicon-send"></span></button>
                             </span>
@@ -37,6 +38,7 @@
 </div>
 <script src="http://code.jquery.com/jquery-1.12.4.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+<script src="/static/jquery.mCustomScrollbar.concat.min.js"></script>
 <script>
     $(function ( ) {
         $('#chat-button').click(function (e) {
@@ -46,9 +48,8 @@
 
         $('#chatbot').submit(function (e) {
             e.preventDefault();
-
             var message = $('#messageContent').val();
-            $(".media-list").append('<p class="media"><div class="media-body"><div class="media"><div class="media-body">'+ message +'</div> </div> </div> </p>');
+            $(".media-list").append('<p class="media"><div class="media-body"><div class="media"><div class="media-body message">'+ message +'</div> </div> </div> </p>');
             $.ajax({
                 type: "POST",
                 url: "/chat",
@@ -58,6 +59,7 @@
                     var answer = response.answer;
                     const chatPanel = document.getElementById("chatPanel");
                     $('.media-list').append('<p class="media"><div class="media-body"><div class="media"><div class="media-body">'+ answer +'</div> </div> </div> </p>')
+                    updateScrollbar();
                 },
                 error: function (error) {
                     console.log(error);
@@ -65,6 +67,24 @@
             });
         });
     });
+
+</script>
+<script>
+    var $messages = $('.message-container');
+
+    $(window).load(function () {
+        $messages.mCustomScrollbar();
+        setTimeout(function () {
+
+        }, 100);
+    });
+
+    function updateScrollbar() {
+        $messages.mCustomScrollbar('update').mCustomScrollbar('scrollTo', 'bottom', {
+            scrollInertia: 10,
+            timeout: 0
+        });
+    }
 </script>
 </body>
 </html>

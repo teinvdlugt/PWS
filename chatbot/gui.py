@@ -5,12 +5,12 @@ from flask import Flask, render_template, request, jsonify
 from . import data_utils
 from . import seq2seq_model
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 
 # Deze dingen kunnen we aanpasbaar maken in de GUI
-CHECKPOINT_PATH = "/tmp/pws_gui"
+CHECKPOINT_PATH = "./data/gui"
 # Deze variabelen moeten in overeenstemming zijn met het checkpoint bestand
-VOCAB_PATH = "/tmp/pws_gui/vocab60"
+VOCAB_PATH = "./data/gui/vocab60"
 VOCAB_SIZE = 60
 SIZE = 256
 NUM_LAYERS = 2
@@ -40,6 +40,8 @@ def init_session_model_vocab(checkpoint_path, vocab_path):
 
     # Load vocabularies.
     _vocab, _rev_vocab = data_utils.initialize_vocabulary(vocab_path)
+
+    loaded = True
 
     return _session, _model, _vocab, _rev_vocab
 
@@ -76,12 +78,21 @@ def answer_message(message):
     return "".join([tf.compat.as_str(rev_vocab[output]) for output in outputs])
 
 
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    return render_template('chatbot.html')
+    global session, model, vocab, rev_vocab
+    if request.method == 'GET':
+        if session:
+            return render_template('chatbot.html')
+        else:
+            return render_template('landing.html')
+    elif request.method == 'POST':
+        if request.form['submit'] == 'Start chatting':
+            session, model, vocab, rev_vocab = init_session_model_vocab(CHECKPOINT_PATH, VOCAB_PATH)
+            return render_template('chatbot.html')
 
 
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['POST', 'GET'])
 def chat():
     message = str(request.form['messageContent'])
     response = answer_message(message)

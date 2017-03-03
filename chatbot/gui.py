@@ -8,9 +8,9 @@ from . import seq2seq_model
 app = Flask(__name__, static_url_path='/static')
 
 # Deze dingen kunnen we aanpasbaar maken in de GUI
-CHECKPOINT_PATH = "./data/gui"
+CHECKPOINT_PATH = "./gui"
 # Deze variabelen moeten in overeenstemming zijn met het checkpoint bestand
-VOCAB_PATH = "./data/gui/vocab60"
+VOCAB_PATH = "./gui/vocab60"
 VOCAB_SIZE = 60
 SIZE = 256
 NUM_LAYERS = 2

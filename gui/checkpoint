@@ -1,0 +1,6 @@
+model_checkpoint_path: "chatbot-char.ckpt-6800"
+all_model_checkpoint_paths: "chatbot-char.ckpt-6400"
+all_model_checkpoint_paths: "chatbot-char.ckpt-6500"
+all_model_checkpoint_paths: "chatbot-char.ckpt-6600"
+all_model_checkpoint_paths: "chatbot-char.ckpt-6700"
+all_model_checkpoint_paths: "chatbot-char.ckpt-6800"

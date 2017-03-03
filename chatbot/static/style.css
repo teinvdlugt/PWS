@@ -1,0 +1,9 @@
+.vertical-container .row {
+    display: table;
+    width: 100%;
+}
+
+.vertical-container .row > .col-md-12 {
+    display: table-cell;
+    vertical-align: middle;
+}

@@ -19,7 +19,7 @@
             <div id="chatPanel" class="panel panel-primary">
                 <div class="panel-heading">Chat</div>
                 <div class="panel-body message-container" style="min-height: 352px; max-height: 352px;">
-                    <p class="media-list"></p>
+                    <div class="media-list"></div>
                 </div>
                 <div class="panel-footer">
                     <form id="chatbot" method="post">
@@ -58,7 +58,7 @@
                     $('#messageContent').val('');
                     var answer = response.answer;
                     const chatPanel = document.getElementById("chatPanel");
-                    $('.media-list').append('<p class="media"><div class="media-body"><div class="media"><div class="media-body">'+ answer +'</div> </div> </div> </p>')
+                    $('.media-list').append('<p class="media" style="text-align: right;;"><div class="media-body"><div class="media"><div class="media-body">'+ answer +'</div> </div> </div> </p>')
                     updateScrollbar();
                 },
                 error: function (error) {

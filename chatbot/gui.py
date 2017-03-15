@@ -41,8 +41,6 @@ def init_session_model_vocab(checkpoint_path, vocab_path):
     # Load vocabularies.
     _vocab, _rev_vocab = data_utils.initialize_vocabulary(vocab_path)
 
-    loaded = True
-
     return _session, _model, _vocab, _rev_vocab
 
 
